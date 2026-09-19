@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { KlipSettings, MemoryStats } from '../../../shared/types';
 import { ShortcutCapture } from './ShortcutCapture';
+import { CloudAccount } from './CloudAccount';
 
 interface GeneralTabProps {
   settings: KlipSettings;
@@ -68,6 +69,7 @@ export function GeneralTab({ settings, memory }: GeneralTabProps) {
         General<em>.</em>
       </h1>
       <p className="main-lead">Shortcuts, memory, and the companion cursor.</p>
+      <CloudAccount />
 
       <div className="section">
         <div className="section-title" style={{ marginBottom: 10 }}>Shortcut</div>
