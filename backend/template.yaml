@@ -16,10 +16,14 @@ Resources:
     UpdateReplacePolicy: Retain
     Metadata:
       com.aws.cloudformation.Context:
-        why: Accounts are independent of desktop provider keys.
+        why: Accounts are independent of desktop provider keys; verified native sign-in receives the preference scope.
         must:
           - Retain accounts on stack deletion or replacement.
     Properties:
+      LambdaConfig:
+        PreTokenGenerationConfig:
+          LambdaArn: !GetAtt TokenScopeFunction.Arn
+          LambdaVersion: V2_0
       UserPoolTier: ESSENTIALS
       UsernameAttributes: [email]
       UsernameConfiguration: { CaseSensitive: false }
@@ -35,6 +39,44 @@ Resources:
           RequireSymbols: true
       MfaConfiguration: OPTIONAL
       EnabledMfas: [SOFTWARE_TOKEN_MFA]
+  TokenScopeFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Native Cognito API tokens need the same narrow preference scope as OAuth tokens.
+        must:
+          - Issue scope only for verified email accounts; keep the API scope check intact.
+          - Never log tokens or user attributes.
+    Properties:
+      CodeUri: dist/
+      Handler: token-scope.handler
+      Runtime: nodejs22.x
+      Architectures: [arm64]
+      MemorySize: 128
+      Timeout: 5
+  TokenScopePermission:
+    Type: AWS::Lambda::Permission
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Only this account and user pool may invoke the token hook.
+        must:
+          - Restrict the Cognito service principal by source account and pool ARN.
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref TokenScopeFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt UserPool.Arn
+  TokenScopeLogs:
+    Type: AWS::Logs::LogGroup
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Bound retention for token-hook diagnostics.
+        must:
+          - Never log tokens or user attributes.
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${TokenScopeFunction}'
+      RetentionInDays: 14
   ResourceServer:
     Type: AWS::Cognito::UserPoolResourceServer
     Metadata:
@@ -52,7 +94,7 @@ Resources:
     DependsOn: ResourceServer
     Metadata:
       com.aws.cloudformation.Context:
-        why: Electron is a public OAuth client using authorization code and PKCE.
+        why: Electron is a public client using native password authentication over TLS; retain OAuth for older clients.
         must:
           - No client secret or implicit grant; keep callback URL aligned with the loopback listener.
     Properties:
@@ -70,7 +112,7 @@ Resources:
       IdTokenValidity: 5
       RefreshTokenValidity: 1
       TokenValidityUnits: { AccessToken: minutes, IdToken: minutes, RefreshToken: days }
-      ExplicitAuthFlows: [ALLOW_USER_SRP_AUTH]
+      ExplicitAuthFlows: [ALLOW_USER_SRP_AUTH, ALLOW_USER_PASSWORD_AUTH]
       RefreshTokenRotation: { Feature: ENABLED, RetryGracePeriodSeconds: 10 }
   UserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain

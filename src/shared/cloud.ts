@@ -20,8 +20,11 @@ export interface CloudStatus {
   hasSavedPreferences: boolean;
 }
 
-export type CloudAction = 'status' | 'sign-in' | 'cancel' | 'sign-out' | 'save' | 'restore';
-export type CloudResult = { ok: true; status: CloudStatus; message?: string }
+export type CloudAuthStep = 'sign-in' | 'sign-up' | 'confirm-sign-up' | 'mfa' | 'forgot-password' | 'reset-password';
+export interface CloudAuthInput { email?: string; password?: string; code?: string }
+export type CloudAction = 'status' | 'sign-in' | 'cancel' | 'sign-out' | 'save' | 'restore'
+  | 'sign-up' | 'confirm-sign-up' | 'resend-code' | 'mfa' | 'forgot-password' | 'reset-password';
+export type CloudResult = { ok: true; status: CloudStatus; message?: string; nextStep?: CloudAuthStep }
   | { ok: false; status: CloudStatus; error: string };
 export const CLOUD_IPC = 'cloud-account';
 export const CLOUD_SCOPE = 'klip/preferences';

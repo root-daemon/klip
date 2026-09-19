@@ -2,7 +2,7 @@
   "name": "klip-backend",
   "private": true,
   "scripts": {
-    "build": "bun build src/index.ts --target=node --format=cjs --outdir=dist",
+    "build": "bun build src/index.ts src/token-scope.ts --target=node --format=cjs --outdir=dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test tests"
   },

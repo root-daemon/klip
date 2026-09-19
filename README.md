@@ -63,7 +63,7 @@ Keys are stored locally with platform-appropriate encryption (Windows DPAPI / ma
 
 ## Optional AWS accounts
 
-KLIP can use Amazon Cognito for browser-based sign-in and API Gateway, Lambda, and
+KLIP can use Amazon Cognito for in-app sign-in and API Gateway, Lambda, and
 DynamoDB to save and restore portable preferences across devices. Configure the
 backend, then open **General → Account & preferences**. Local use does not require
 an account. See [AWS setup, architecture, and tests](docs/aws-backend.md).

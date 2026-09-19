@@ -1,13 +1,14 @@
-import { app, ipcMain, shell, type BrowserWindow } from 'electron';
+import { app, ipcMain, type BrowserWindow } from 'electron';
 import { existsSync, readFileSync } from 'fs';
 import path from 'path';
-import { CLOUD_IPC, pickPreferences, type CloudAction, type CloudResult, type CloudStatus } from '../../shared/cloud';
-import { CloudAuth, beginAuthorization, parseCloudConfig } from './cloud-auth';
+import { CLOUD_IPC, pickPreferences, type CloudAuthInput, type CloudAction, type CloudResult, type CloudStatus } from '../../shared/cloud';
+import { parseCloudConfig } from './cloud-auth';
+import { NativeCloudAuth } from './cloud-native-auth';
 import { CloudPreferencesClient } from './cloud-preferences';
 import type { CompanionManager } from '../companion-manager';
 
 export function registerCloudAccount(companion: CompanionManager, panel: () => BrowserWindow | null): void {
-  let auth: CloudAuth | undefined;
+  let auth: NativeCloudAuth | undefined;
   let preferences: CloudPreferencesClient | undefined;
   let configError: string | undefined;
   try {
@@ -17,7 +18,7 @@ export function registerCloudAccount(companion: CompanionManager, panel: () => B
       ? { apiUrl: env.KLIP_CLOUD_API_URL, authDomain: env.KLIP_CLOUD_AUTH_DOMAIN, clientId: env.KLIP_CLOUD_CLIENT_ID }
       : existsSync(configPath) ? JSON.parse(readFileSync(configPath, 'utf8')) : null;
     if (config) {
-      auth = new CloudAuth(parseCloudConfig(config));
+      auth = new NativeCloudAuth(parseCloudConfig(config));
       preferences = new CloudPreferencesClient(auth.config.apiUrl, () => auth!.accessToken());
     }
   } catch {
@@ -26,16 +27,15 @@ export function registerCloudAccount(companion: CompanionManager, panel: () => B
   const status = (): CloudStatus => ({ configured: !!auth, signedIn: auth?.signedIn ?? false,
     email: auth?.email, hasSavedPreferences: !!auth?.signedIn && !!preferences?.hasSavedPreferences });
   let busy = false;
-  let cancelLogin: (() => void) | undefined;
-  app.on('before-quit', () => cancelLogin?.());
+  app.on('before-quit', () => auth?.cancel());
 
-  ipcMain.handle(CLOUD_IPC, async (event, action: CloudAction): Promise<CloudResult> => {
+  ipcMain.handle(CLOUD_IPC, async (event, action: CloudAction, input?: CloudAuthInput): Promise<CloudResult> => {
     // Credentials and cloud actions belong only to the settings panel's top frame.
     if (event.sender !== panel()?.webContents || event.senderFrame !== event.sender.mainFrame) {
       return { ok: false, status: status(), error: 'Cloud accounts are only available from the settings panel.' };
     }
     if (action === 'cancel') {
-      cancelLogin?.();
+      auth?.cancel();
       return { ok: true, status: status() };
     }
     if (action === 'status') return configError
@@ -45,23 +45,26 @@ export function registerCloudAccount(companion: CompanionManager, panel: () => B
     busy = true;
     try {
       switch (action) {
-        case 'sign-in': {
-          if (auth.signedIn) throw new Error('Sign out before switching accounts.');
-          const login = await beginAuthorization(auth.config);
-          let cancelled = false;
-          cancelLogin = () => { cancelled = true; login.cancel(); };
-          try {
-            await shell.openExternal(login.url);
-            await auth.complete(await login.code, login.verifier);
-            if (cancelled) {
-              await auth.signOut();
-              throw new Error('Sign-in cancelled.');
-            }
-          } finally { login.cancel(); cancelLogin = undefined; }
+        case 'sign-up':
+          return { ok: true, status: status(), nextStep: await auth.signUp(input), message: 'Check your email for a verification code.' };
+        case 'confirm-sign-up':
+          await auth.confirmSignUp(input);
+          return { ok: true, status: status(), nextStep: 'sign-in', message: 'Email verified. You can sign in now.' };
+        case 'resend-code':
+          await auth.resend(input);
+          return { ok: true, status: status(), message: 'A new verification code has been sent.' };
+        case 'forgot-password':
+          await auth.forgotPassword(input);
+          return { ok: true, status: status(), nextStep: 'reset-password', message: 'If your account is eligible, a reset code has been sent to your email.' };
+        case 'reset-password':
+          await auth.resetPassword(input);
+          return { ok: true, status: status(), nextStep: 'sign-in', message: 'Password updated. Sign in with your new password.' };
+        case 'sign-in':
+        case 'mfa': {
+          const nextStep = action === 'mfa' ? await auth.mfa(input) : await auth.signIn(input);
+          if (nextStep) return { ok: true, status: status(), nextStep };
           preferences.clear();
           await preferences.read();
-          panel()?.show();
-          panel()?.focus();
           return { ok: true, status: status(), message: 'Signed in. Save these preferences or restore your saved preferences.' };
         }
         case 'sign-out':

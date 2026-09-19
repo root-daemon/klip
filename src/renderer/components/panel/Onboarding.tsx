@@ -13,6 +13,8 @@ import { CursorIcon } from '../CursorIcon';
 import { KlipPet } from '../KlipPet';
 import { KeyEntry } from './KeyEntry';
 import { ShortcutCapture } from './ShortcutCapture';
+import { CloudAccount } from './CloudAccount';
+import type { CloudStatus } from '../../../shared/cloud';
 
 /**
  * First-run setup. Each step verifies the thing it configures — a key
@@ -24,6 +26,7 @@ import { ShortcutCapture } from './ShortcutCapture';
 
 type StepId =
   | 'welcome'
+  | 'account'
   | 'permissions'
   | 'mind'
   | 'ear'
@@ -44,6 +47,7 @@ const isWin = platform === 'win32';
 
 const ALL_STEPS: StepMeta[] = [
   { id: 'welcome', title: 'Welcome' },
+  { id: 'account', title: 'Account' },
   { id: 'permissions', title: 'Permissions' },
   { id: 'mind', title: 'Mind' },
   { id: 'ear', title: 'Ear' },
@@ -127,6 +131,7 @@ export function Onboarding({ settings, voiceState }: OnboardingProps) {
             transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
           >
             {step.id === 'welcome' && <WelcomeStep onNext={next} />}
+            {step.id === 'account' && <AccountStep onNext={next} onBack={back} />}
             {step.id === 'permissions' && <PermissionsStep onNext={next} onBack={back} />}
             {step.id === 'mind' && <MindStep settings={settings} onNext={next} onBack={back} />}
             {step.id === 'ear' && <EarStep settings={settings} onNext={next} onBack={back} />}
@@ -270,6 +275,26 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
 }
 
 // ── 2. Permissions ─────────────────────────────────────────────────────
+
+function AccountStep({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
+  const [status, setStatus] = useState<CloudStatus | null>(null);
+
+  return (
+    <>
+      <h1 className="ob-h1">Make yourself at home<em>.</em></h1>
+      <p className="ob-lead">
+        Sign in or create a KLIP account to bring your preferences to another computer.
+        If you&apos;ve used KLIP before, restore your saved preferences here.
+      </p>
+      <CloudAccount onStatusChange={setStatus} />
+      <p className="ob-fine">
+        An account is optional. You&apos;ll connect your AI and voice providers in the next steps.
+        You can also sign in later from General → Account &amp; preferences.
+      </p>
+      <Footer onBack={onBack} onNext={onNext} nextLabel={status?.signedIn ? 'Continue' : 'Skip for now'} />
+    </>
+  );
+}
 
 function PermissionsStep({ onNext, onBack }: { onNext: () => void; onBack: () => void }) {
   const [perms, setPerms] = useState<PermissionStatus | null>(null);

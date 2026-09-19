@@ -1,19 +1,22 @@
 # AWS accounts and preference sync
 
-KLIP's optional AWS backend adds browser-based account creation/sign-in and explicit preference save/restore. The desktop app still works without AWS configuration. No AWS resources are deployed by building or testing the project.
+KLIP's optional AWS backend adds in-app account creation/sign-in and explicit preference save/restore. The desktop app still works without AWS configuration. No AWS resources are deployed by building or testing the project.
 
 ## Architecture
 
 ```text
 Electron settings panel → restricted preload IPC → Electron main process
-                                                     ├─ Cognito managed login (system browser)
+                                                     ├─ Cognito native API (email/password + verification codes)
                                                      └─ access token → API Gateway JWT authorizer
                                                                           → Lambda → DynamoDB
 ```
 
-Cognito manages email verification, password recovery and optional authenticator MFA. The public desktop client uses OAuth authorization code + S256 PKCE, random state and a temporary localhost callback. It has no client secret or AWS credentials. The access token authorizes only the `klip/preferences` scope. API Gateway validates signature, issuer, client audience, expiry and scope; Lambda also requires an access token and derives the storage key from its verified `sub` claim.
+The desktop provides email/password sign-in, sign-up, email confirmation/resend, password reset, and authenticator-code prompts in both setup and General. The public Cognito client has no secret or AWS credentials. Electron's restricted main-process IPC handler sends passwords directly to the regional Cognito API over HTTPS using `USER_PASSWORD_AUTH`; passwords are cleared from the form after submission and never persisted or logged. Native sign-in requires the standard regional Cognito domain in `authDomain`.
 
-Tokens live only in Electron main-process memory. They never enter the renderer, localStorage, logs or the settings file. Refresh tokens rotate, expire after one day, and are revoked on sign-out. Access tokens expire after five minutes. Restarting KLIP requires signing in again. Sign-out clears local tokens even if revocation cannot reach Cognito. API Gateway's JWT validation does not check Cognito revocation, so an already-issued access token can remain usable until expiry. Sign-in explicitly prompts for credentials; the external browser's Cognito cookie is not cleared by local sign-out.
+Native Cognito API authentication does not request OAuth scopes. A V2 pre-token Lambda trigger grants `klip/preferences` only to email-verified users on authentication/refresh. API Gateway still checks issuer, audience, expiry, and this scope; the preference Lambda still requires an access token and uses its verified `sub` as the storage key. The pool remains Essentials tier. OAuth/managed-login resources remain available for older desktop clients.
+
+Tokens and MFA challenge sessions live only in Electron main-process memory. They never enter the renderer, localStorage, logs or settings files. Refresh tokens rotate through `GetTokensFromRefreshToken`, expire after one day, and are revoked on sign-out. Access tokens expire after five minutes. Restarting KLIP requires signing in again. Sign-out clears local tokens even if revocation fails; an already-issued access token can remain usable at API Gateway until expiry. Navigating away from an account form cancels pending authentication requests.
+
 
 ## What syncs
 
@@ -26,7 +29,7 @@ Only these portable preferences are accepted by the client and backend:
 
 Provider selection/model IDs, voice IDs, API keys, chat history, screenshots, local model connections, shortcuts, window positions, launch-at-login and auto-typing permissions stay local. This prevents restoring settings that require unavailable credentials or granting desktop privileges on a new device.
 
-Open **General → Account & preferences** and sign in. **Save to cloud** explicitly replaces the account's saved preference set with this device's preferences. **Restore from cloud** downloads and applies the saved set in one local file write. Signing in alone does not change preferences. On a second device, sign in to the same account and choose Restore. Changes are not uploaded in the background.
+Sign in during **Setup → Account**, or open **General → Account & preferences**. **Save to cloud** explicitly replaces the account's saved preference set with this device's preferences. **Restore from cloud** downloads and applies the saved set in one local file write. Signing in alone does not change preferences. On a second device, sign in to the same account and choose Restore. Changes are not uploaded in the background.
 
 If another device saves after this device's last read, saving returns a conflict. Restore first, then make your changes and save again. A lost write response can similarly require restoring before another save; the backend does not retry a conflicting write or silently merge it.
 
@@ -84,7 +87,7 @@ sam deploy --guided --template-file backend/template.yaml
 
 Set a stack name such as `klip-dev`, your AWS region, and the `DomainPrefix` parameter. Allow SAM to create the Lambda execution role (`CAPABILITY_IAM`) and resolve its artifact bucket. Keep change-set confirmation enabled to review the concrete resources before execution. No `sam build` is needed: Bun already created the bundle referenced by `CodeUri`.
 
-After deployment, retrieve the `ApiUrl`, `AuthDomain` and `ClientId` stack outputs. Cognito managed-login branding is included in the template, so no separate console branding step is needed. Cognito's default email sender is suitable for initial testing; production email delivery/quotas and account recovery should be verified for the chosen account and region.
+After deployment, retrieve the `ApiUrl`, `AuthDomain` and `ClientId` stack outputs. The native account forms need no hosted-page branding setup. The template retains managed login for older clients. Cognito's default email sender is suitable for initial testing; production email delivery/quotas and account recovery should be verified for the chosen account and region.
 
 ## Configure the desktop
 
@@ -109,17 +112,17 @@ Alternatively, create `klip-cloud.json` in Electron's `app.getPath('userData')` 
 }
 ```
 
-These are public endpoint identifiers, not secrets. Environment variables take precedence as a complete configuration; do not supply only one. Both endpoints must be HTTPS origins without paths or query strings. Restart the app after configuring it. The localhost callback is fixed at `http://localhost:43827/callback`; that port must be free. Cancellation, denied login and a three-minute timeout close the temporary listener. If you change the port, update both the client and stack callback URLs.
+These are public endpoint identifiers, not secrets. Environment variables take precedence as a complete configuration; do not supply only one. Both endpoints must be HTTPS origins without paths or query strings. Restart the app after configuring it. Native sign-in opens no browser and requires no localhost callback port. The legacy OAuth callback remains registered for older clients.
 
 ## Deployment smoke test
 
 1. Confirm unauthenticated GET/PUT `/preferences` requests return 401/403.
-2. Create and verify a test account using the desktop's browser sign-in. Confirm password recovery works.
+2. Create and verify a test account using the in-app email and code forms. Confirm password recovery works.
 3. Save preferences on device A, sign in with the same account on B, and restore. Confirm the live cursor and General/Mind/Voice controls update.
 4. Sign in with a different account; confirm it has no access to the first account's saved preferences.
 5. With both devices signed in, save from A and attempt a stale save from B. B must show a conflict and require Restore.
 6. Leave a session idle for over five minutes, then restore to exercise a real Cognito refresh. Sign out and confirm cloud actions are unavailable while local AI continues to work.
-7. Cancel sign-in, deny authorization, and try with port 43827 occupied; errors must be visible and a later sign-in must work.
+7. Try an incorrect password, incorrect/expired email code, resend, password reset, authenticator code, and leaving the Account step during a request; errors must be visible and a later attempt must work.
 
 Local tests cannot certify live Cognito email delivery, AWS account permissions, managed-login availability or deployed API authorizer behavior. Complete this checklist after deploying to the intended test account.
 
@@ -127,4 +130,6 @@ Local tests cannot certify live Cognito email delivery, AWS account permissions,
 
 Managed AI access through Bedrock, usage accounting/enforcement, billing, chat sync and persistent encrypted account sessions are separate follow-ups. This milestone provisions only account authentication and preference sync.
 
-Implementation references: [Cognito authorization + PKCE](https://docs.aws.amazon.com/cognito/latest/developerguide/authorization-endpoint.html), [refresh tokens](https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-using-the-refresh-token.html), [API Gateway JWT authorizers](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-jwt-authorizer.html).
+Native authentication reference: [Cognito InitiateAuth](https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_InitiateAuth.html), [pre-token scope customization](https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-lambda-pre-token-generation.html).
+
+Legacy OAuth references: [Cognito authorization + PKCE](https://docs.aws.amazon.com/cognito/latest/developerguide/authorization-endpoint.html), [refresh tokens](https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-using-the-refresh-token.html), [API Gateway JWT authorizers](https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-jwt-authorizer.html).
