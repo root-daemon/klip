@@ -88,7 +88,7 @@ export function HomeTab({ voiceState, settings, memory, onNavigate }: HomeTabPro
 
       <motion.div className="home-hero" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}>
         <div className="home-pet">
-          <KlipPet mood={petMood} size={64} />
+          <KlipPet mood={petMood} size={96} />
         </div>
         <div className="home-wave-wrap">
           <Waveform state={ready ? voiceState : 'idle'} bars={23} height={72} />

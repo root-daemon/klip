@@ -29,6 +29,15 @@ function computeDockPos(info: DisplayInfo | null): { x: number; y: number } {
   };
 }
 
+// How close the real cursor needs to get before the pet "notices" it
+// (eyes track it, and it waves hello once per approach).
+const NOTICE_RADIUS_PX = 260;
+const GAZE_MAX_PX = 3;
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n));
+}
+
 const POINTING_PHRASES = [
   'right here!',
   'found it!',
@@ -437,6 +446,21 @@ export function OverlayApp() {
   const isMultiStep = (currentStep?.total ?? 0) > 1;
   const petMood: PetMood = reactionPulse ?? voiceState;
 
+  // Distance from wherever the pet is actually rendered right now to
+  // the real cursor — drives both the eye-tracking nudge and the
+  // "notice you're nearby" wave. Only meaningful while the cursor is
+  // on this display at all.
+  const dxToCursor = adaptiveCursorPos.x - companionPos.x;
+  const dyToCursor = adaptiveCursorPos.y - companionPos.y;
+  const distToCursor = Math.hypot(dxToCursor, dyToCursor);
+  const isCursorNearPet = isCursorOnThisDisplay && distToCursor < NOTICE_RADIUS_PX;
+  const petGaze = isCursorOnThisDisplay
+    ? {
+        x: clamp(dxToCursor / NOTICE_RADIUS_PX, -1, 1) * GAZE_MAX_PX,
+        y: clamp(dyToCursor / NOTICE_RADIUS_PX, -1, 1) * GAZE_MAX_PX,
+      }
+    : { x: 0, y: 0 };
+
   return (
     <div className="overlay-container">
       {showOnThisDisplay && (
@@ -456,7 +480,7 @@ export function OverlayApp() {
               transition: cursorTransition,
             }}
           >
-            <KlipPet mood={petMood} size={40} />
+            <KlipPet mood={petMood} size={40} gaze={petGaze} isCursorNear={isCursorNearPet} />
           </div>
 
           {voiceState === 'listening' && (

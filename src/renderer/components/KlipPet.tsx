@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from 'react';
+import { useCallback, useEffect, useId, useRef } from 'react';
 import { AnimatePresence, motion, useAnimation } from 'framer-motion';
 import type { VoiceState } from '../../shared/types';
 
@@ -11,6 +11,13 @@ interface KlipPetProps {
   size?: number;
   className?: string;
   style?: React.CSSProperties;
+  /** Normalized-ish pixel offset (small range, e.g. -3..3) toward the
+   *  real cursor — only acted on while idle. Lets the eyes "notice"
+   *  where the user's pointer actually is. */
+  gaze?: { x: number; y: number };
+  /** True when the real cursor is close by — triggers a wave hello
+   *  (once per cooldown window) while idle. */
+  isCursorNear?: boolean;
 }
 
 const CX = 24;
@@ -22,7 +29,9 @@ const EYE_GAP = 11;
 const EYE_CY = 24;
 const HAND_CX = 38;
 const HAND_CY = 37;
-const HAND_R = 5;
+/** Minimum time between waves, whether triggered by the idle timer or
+ *  by the cursor approaching, so hovering nearby doesn't spam it. */
+const WAVE_COOLDOWN_MS = 4500;
 
 const SPRING = { duration: 0.4, ease: [0.34, 1.56, 0.64, 1] as const };
 
@@ -38,18 +47,19 @@ function worriedArcPath(ex: number, ey: number): string {
 
 /**
  * The KLIP companion: a dark circular body with two glowing capsule
- * eyes, no mouth, plus a small hand that peeks out to wave. Emotion
- * reads through eye shape, motion and glow — driven by imperative
- * AnimationControls rather than declarative variants so a blink (its
- * own transform layer, one level above the eye shape) never has to
- * fight the mood animation for the same values.
+ * eyes, no mouth, plus a small hand (palm, one thumb, three fingers —
+ * four digits in right-ish proportion, not a blob) that peeks out to
+ * wave. Emotion reads through eye shape, motion and glow — driven by
+ * imperative AnimationControls rather than declarative variants so a
+ * blink (its own transform layer, one level above the eye shape)
+ * never has to fight the mood animation for the same values.
  *
  * `success`/`error` swap the capsule for a drawn arc (happy squint /
  * worried squint) rather than squashing+rotating the capsule — a
  * heavily flattened, rotated rect reads as a wedge/horn at small
  * sizes, not an expression.
  */
-export function KlipPet({ mood, size = 44, className, style }: KlipPetProps) {
+export function KlipPet({ mood, size = 44, className, style, gaze, isCursorNear }: KlipPetProps) {
   const raw = useId();
   const uid = raw.replace(/[^a-zA-Z0-9]/g, '');
 
@@ -58,8 +68,10 @@ export function KlipPet({ mood, size = 44, className, style }: KlipPetProps) {
   const blink = useAnimation();
   const leftEye = useAnimation();
   const rightEye = useAnimation();
+  const gazeControls = useAnimation();
   const hand = useAnimation();
   const blinkingRef = useRef(false);
+  const lastWaveAtRef = useRef(0);
 
   const isHappy = mood === 'success';
   const isWorried = mood === 'error';
@@ -166,6 +178,34 @@ export function KlipPet({ mood, size = 44, className, style }: KlipPetProps) {
     };
   }, [mood, leftEye, rightEye]);
 
+  // Eyes "notice" the real cursor: a separate transform layer (like
+  // blink) that nudges eye position toward wherever the caller says
+  // the cursor is, only while idle — once KLIP is listening/thinking/
+  // speaking it's paying attention to the conversation, not the mouse.
+  useEffect(() => {
+    if (mood === 'idle' && gaze) {
+      gazeControls.start({ x: gaze.x, y: gaze.y, transition: { duration: 0.28, ease: 'easeOut' } });
+    } else {
+      gazeControls.start({ x: 0, y: 0, transition: { duration: 0.2, ease: 'easeOut' } });
+    }
+  }, [mood, gaze?.x, gaze?.y, gazeControls]);
+
+  // Waving hand — shared by the idle-timer trigger below and the
+  // cursor-proximity trigger the caller reports via `isCursorNear`.
+  // The cooldown lives here so either source respects it.
+  const performWave = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastWaveAtRef.current < WAVE_COOLDOWN_MS) return;
+    lastWaveAtRef.current = now;
+    await hand.start({
+      opacity: 1,
+      scale: 1,
+      rotate: [0, -22, 12, -18, 8, 0],
+      transition: { duration: 1.1, ease: 'easeInOut' },
+    });
+    await hand.start({ opacity: 0, scale: 0, transition: { duration: 0.25, ease: 'easeIn' } });
+  }, [hand]);
+
   // A little hand peeks out and waves every so often while idle.
   useEffect(() => {
     if (mood !== 'idle') return;
@@ -175,14 +215,8 @@ export function KlipPet({ mood, size = 44, className, style }: KlipPetProps) {
       const delay = 9000 + Math.random() * 8000;
       timer = setTimeout(async () => {
         if (cancelled) return;
-        await hand.start({
-          opacity: 1,
-          scale: 1,
-          rotate: [0, -22, 12, -18, 8, 0],
-          transition: { duration: 1.1, ease: 'easeInOut' },
-        });
+        await performWave();
         if (cancelled) return;
-        await hand.start({ opacity: 0, scale: 0, transition: { duration: 0.25, ease: 'easeIn' } });
         scheduleWave();
       }, delay);
     };
@@ -191,7 +225,22 @@ export function KlipPet({ mood, size = 44, className, style }: KlipPetProps) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [mood, hand]);
+  }, [mood, performWave]);
+
+  // Says hi the moment the cursor actually gets close, instead of
+  // waiting for the random idle timer — fires once per approach
+  // (edge-triggered) so lingering nearby doesn't wave on repeat.
+  const wasNearRef = useRef(false);
+  useEffect(() => {
+    if (mood !== 'idle') {
+      wasNearRef.current = false;
+      return;
+    }
+    if (isCursorNear && !wasNearRef.current) {
+      void performWave();
+    }
+    wasNearRef.current = !!isCursorNear;
+  }, [mood, isCursorNear, performWave]);
 
   const bodyGradId = `klip-body-${uid}`;
   const glowFilterId = `klip-glow-${uid}`;
@@ -221,17 +270,41 @@ export function KlipPet({ mood, size = 44, className, style }: KlipPetProps) {
       </defs>
 
       <motion.g animate={body} initial={false} style={{ transformBox: 'fill-box', transformOrigin: 'center' }}>
-        <motion.circle
-          cx={HAND_CX}
-          cy={HAND_CY}
-          r={HAND_R}
-          fill={`url(#${bodyGradId})`}
-          stroke="rgba(255,255,255,0.07)"
-          strokeWidth="1"
+        {/* Hand: a palm plus four digits (three fingers + one thumb) in
+            roughly true proportion — not a plain circle. Hidden at rest
+            (opacity/scale 0), the shared `hand` controls scale it in and
+            rotate the whole unit as one rigid piece for the wave. */}
+        <motion.g
           animate={hand}
           initial={{ opacity: 0, scale: 0 }}
           style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
-        />
+        >
+          <g transform={`translate(${HAND_CX} ${HAND_CY})`}>
+            {/* Thumb, angled off the side of the palm */}
+            <rect
+              x={-0.75} y={-1.6} width={1.5} height={3.1} rx={0.75}
+              fill={`url(#${bodyGradId})`}
+              stroke="rgba(255,255,255,0.08)" strokeWidth="0.5"
+              transform="rotate(-55 -3.9 0)"
+            />
+            {/* Three fingers, gently fanned */}
+            {[-1.7, 0, 1.7].map((fx, i) => (
+              <rect
+                key={fx}
+                x={fx - 0.75} y={-3.7} width={1.5} height={3.9} rx={0.75}
+                fill={`url(#${bodyGradId})`}
+                stroke="rgba(255,255,255,0.08)" strokeWidth="0.5"
+                transform={`rotate(${(i - 1) * 13} ${fx} 0)`}
+              />
+            ))}
+            {/* Palm */}
+            <ellipse
+              cx={0} cy={1.3} rx={3.3} ry={2.7}
+              fill={`url(#${bodyGradId})`}
+              stroke="rgba(255,255,255,0.08)" strokeWidth="0.6"
+            />
+          </g>
+        </motion.g>
 
         <circle cx={CX} cy={CY} r={BODY_R} fill={`url(#${bodyGradId})`} stroke="rgba(255,255,255,0.07)" strokeWidth="1" />
 
@@ -269,29 +342,33 @@ export function KlipPet({ mood, size = 44, className, style }: KlipPetProps) {
             >
               <motion.g animate={blink} initial={false} style={{ transformBox: 'fill-box', transformOrigin: 'center' }}>
                 <motion.g animate={leftEye} initial={false} style={{ transformBox: 'fill-box', transformOrigin: 'center' }}>
-                  <rect
-                    x={leftEyeX - EYE_W / 2}
-                    y={EYE_CY - EYE_H / 2}
-                    width={EYE_W}
-                    height={EYE_H}
-                    rx={EYE_W / 2}
-                    fill="var(--pet-glow)"
-                  />
-                  <circle cx={leftEyeX - 1.3} cy={EYE_CY - EYE_H / 2 + 3.6} r={1.1} fill="rgba(255,255,255,0.85)" />
+                  <motion.g animate={gazeControls} initial={false} style={{ transformBox: 'fill-box', transformOrigin: 'center' }}>
+                    <rect
+                      x={leftEyeX - EYE_W / 2}
+                      y={EYE_CY - EYE_H / 2}
+                      width={EYE_W}
+                      height={EYE_H}
+                      rx={EYE_W / 2}
+                      fill="var(--pet-glow)"
+                    />
+                    <circle cx={leftEyeX - 1.3} cy={EYE_CY - EYE_H / 2 + 3.6} r={1.1} fill="rgba(255,255,255,0.85)" />
+                  </motion.g>
                 </motion.g>
               </motion.g>
 
               <motion.g animate={blink} initial={false} style={{ transformBox: 'fill-box', transformOrigin: 'center' }}>
                 <motion.g animate={rightEye} initial={false} style={{ transformBox: 'fill-box', transformOrigin: 'center' }}>
-                  <rect
-                    x={rightEyeX - EYE_W / 2}
-                    y={EYE_CY - EYE_H / 2}
-                    width={EYE_W}
-                    height={EYE_H}
-                    rx={EYE_W / 2}
-                    fill="var(--pet-glow)"
-                  />
-                  <circle cx={rightEyeX - 1.3} cy={EYE_CY - EYE_H / 2 + 3.6} r={1.1} fill="rgba(255,255,255,0.85)" />
+                  <motion.g animate={gazeControls} initial={false} style={{ transformBox: 'fill-box', transformOrigin: 'center' }}>
+                    <rect
+                      x={rightEyeX - EYE_W / 2}
+                      y={EYE_CY - EYE_H / 2}
+                      width={EYE_W}
+                      height={EYE_H}
+                      rx={EYE_W / 2}
+                      fill="var(--pet-glow)"
+                    />
+                    <circle cx={rightEyeX - 1.3} cy={EYE_CY - EYE_H / 2 + 3.6} r={1.1} fill="rgba(255,255,255,0.85)" />
+                  </motion.g>
                 </motion.g>
               </motion.g>
             </motion.g>
