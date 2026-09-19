@@ -1,5 +1,6 @@
 import { Mark } from './components/Mark';
 import { HeroVideo } from './components/HeroVideo';
+import { ShaderWordmark } from './components/ShaderWordmark';
 import { Win } from './components/Win';
 import { Taskbar } from './components/Taskbar';
 import { DesktopIcons } from './components/DesktopIcons';
@@ -147,7 +148,7 @@ export default function Page() {
 
             <div className="hero-copy">
               <p className="eyebrow">windows · mac · linux</p>
-              <h1 className="wordmark">flicky</h1>
+              <ShaderWordmark text="flicky" />
               <p className="lead">an ai buddy that lives on your desktop.</p>
               <div className="cta">
                 <a

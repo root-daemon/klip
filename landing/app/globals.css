@@ -434,6 +434,34 @@ main {
   line-height: 0.95;
 }
 
+/* the wordmark as a WebGPU surface: the <h1> keeps the layout, the
+   canvas sits on top with room for the halo, and once the first frame
+   is on screen the DOM glyphs go transparent so the shader shows through */
+.wordmark-wrap {
+  --wm-pad: 40px;
+  position: relative;
+  display: inline-block;
+}
+.wordmark-wrap .wordmark {
+  position: relative;
+  z-index: 1;
+  transition: color 0.25s ease;
+}
+.wordmark-gpu {
+  position: absolute;
+  left: calc(-1 * var(--wm-pad));
+  top: calc(-1 * var(--wm-pad));
+  width: calc(100% + 2 * var(--wm-pad));
+  height: calc(100% + 2 * var(--wm-pad));
+  display: block;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.wordmark-wrap.is-gpu .wordmark { color: transparent; }
+.wordmark-wrap.is-gpu .wordmark-gpu { opacity: 1; }
+
 .lead {
   margin-top: 16px;
   font-size: 20px;

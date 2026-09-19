@@ -10,8 +10,28 @@ const nextConfig = {
   output: 'export',
   images: { unoptimized: true },
   // Pin Turbopack's root to this folder so Next 16 doesn't wander up
-  // the tree and pick up the outer Electron app's lockfile.
-  turbopack: { root: __dirname },
+  // the tree and pick up the outer Electron app's lockfile. The .wgsl
+  // rule lets the hero wordmark shader import @vgpu/wgsl-std modules.
+  turbopack: {
+    root: __dirname,
+    rules: {
+      '*.wgsl': {
+        loaders: [{ loader: '@vgpu/wgsl/loader-webpack', options: { minify: true } }],
+        as: '*.js',
+      },
+    },
+  },
+  // Same rule for anyone running the webpack bundler.
+  webpack(config) {
+    config.module ??= {};
+    config.module.rules ??= [];
+    config.module.rules.push({
+      test: /\.wgsl$/,
+      loader: '@vgpu/wgsl/loader-webpack',
+      options: { minify: true },
+    });
+    return config;
+  },
 };
 
 export default nextConfig;
