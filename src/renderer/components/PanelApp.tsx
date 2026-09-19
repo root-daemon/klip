@@ -6,11 +6,12 @@ import { MindTab } from './panel/MindTab';
 import { VoiceTab } from './panel/VoiceTab';
 import { EarTab } from './panel/EarTab';
 import { GeneralTab } from './panel/GeneralTab';
+import { SettingsTab } from './panel/SettingsTab';
 import { PermissionsBanner } from './panel/PermissionsBanner';
 import { Onboarding } from './panel/Onboarding';
 import { CursorIcon } from './CursorIcon';
 
-type Tab = 'home' | 'chats' | 'mind' | 'voice' | 'ear' | 'general';
+type Tab = 'home' | 'chats' | 'mind' | 'voice' | 'ear' | 'general' | 'settings';
 
 export function PanelApp() {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
@@ -55,21 +56,26 @@ export function PanelApp() {
   const mindNeeds =
     settings.mindProvider === 'openai'
       ? !apiKeyStatus.openai
-      : settings.mindProvider === 'ollama'
-        ? !(settings.localConnections ?? []).some((c) => c.enabled)
-        : !apiKeyStatus.anthropic;
+      : settings.mindProvider === 'gemini'
+        ? !apiKeyStatus.gemini
+        : settings.mindProvider === 'ollama'
+          ? !(settings.localConnections ?? []).some((c) => c.enabled)
+          : !apiKeyStatus.anthropic;
+  const sttProvider = settings.transcriptionProvider === 'sarvam' ? 'sarvam' : 'groq';
 
   const navItem = (
     id: Tab,
     label: string,
+    icon: string,
     opts: { needs?: boolean } = {},
   ) => (
     <button
       className={`nav-item ${tab === id ? 'on' : ''}`}
       onClick={() => setTab(id)}
     >
-      <span className={`dot ${opts.needs ? 'warn' : ''}`} />
+      <span className="nav-icon" aria-hidden>{icon}</span>
       <span className="label">{label}</span>
+      {opts.needs && <span className="dot warn" />}
     </button>
   );
 
@@ -84,16 +90,17 @@ export function PanelApp() {
         </div>
 
         <nav className="nav">
-          {navItem('home', 'Home')}
-          {navItem('chats', 'Chats')}
+          {navItem('home', 'Home', '⌂')}
+          {navItem('chats', 'Chats', '◆')}
 
           <div className="nav-label">Providers</div>
-          {navItem('mind', 'Mind', { needs: mindNeeds })}
-          {navItem('voice', 'Voice', { needs: settings.speakReplies && !apiKeyStatus.elevenlabs })}
-          {navItem('ear', 'Ear', { needs: !apiKeyStatus.groq })}
+          {navItem('mind', 'Mind', '◈', { needs: mindNeeds })}
+          {navItem('voice', 'Voice', '◉', { needs: settings.speakReplies && !apiKeyStatus[settings.ttsProvider] })}
+          {navItem('ear', 'Ear', '◐', { needs: !apiKeyStatus[sttProvider] })}
 
           <div className="nav-label">System</div>
-          {navItem('general', 'General')}
+          {navItem('settings', 'Settings', '⚙')}
+          {navItem('general', 'General', '▤')}
         </nav>
 
         <div className="sidebar-foot">
@@ -135,6 +142,7 @@ export function PanelApp() {
         {tab === 'mind' && <MindTab settings={settings} />}
         {tab === 'voice' && <VoiceTab settings={settings} />}
         {tab === 'ear' && <EarTab settings={settings} />}
+        {tab === 'settings' && <SettingsTab settings={settings} />}
         {tab === 'general' && <GeneralTab settings={settings} memory={memory} />}
       </main>
     </div>

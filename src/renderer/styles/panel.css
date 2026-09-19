@@ -116,6 +116,12 @@ body {
   color: var(--fl-ink);
   font-weight: 600;
 }
+.nav-icon {
+  width: 18px; flex-shrink: 0; text-align: center;
+  font-size: 13px; color: var(--fl-dim);
+  transition: color .12s ease;
+}
+.nav-item.on .nav-icon { color: var(--accent); }
 .nav-item .dot {
   width: 6px; height: 6px; border-radius: 999px;
   background: var(--fl-ok); flex-shrink: 0;
@@ -234,19 +240,27 @@ body {
   transform: translateY(-3px);
   border-color: rgba(255, 255, 255, 0.16);
 }
-/* Bold accent blocks — for the one or two cards that should pop like
-   the reference dashboard's color-filled hero tiles, rather than
-   every card reading as the same neutral glass. */
+/* Bold accent blocks — genuine saturated fills (not tints) so a
+   couple of hero tiles pop the way the reference dashboard's
+   color-filled cards do, rather than every card reading as the same
+   neutral glass. Dark ink on the fill for the same reason the
+   reference uses near-black text on its yellow/orange tiles: legibility. */
 .stat-card.accent-yellow {
-  background: linear-gradient(155deg, rgba(244, 228, 9, 0.22), rgba(244, 228, 9, 0.06));
-  border-color: rgba(244, 228, 9, 0.35);
+  background: linear-gradient(155deg, #f6e70f, #ddc90a);
+  border-color: transparent;
+  box-shadow: 0 10px 30px rgba(244, 228, 9, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
-.stat-card.accent-yellow .stat-label { color: rgba(244, 228, 9, 0.75); }
+.stat-card.accent-yellow .stat-label { color: rgba(20, 18, 4, 0.62); }
+.stat-card.accent-yellow .stat-value { color: #17150a; }
+.stat-card.accent-yellow .stat-sub { color: rgba(20, 18, 4, 0.6); }
 .stat-card.accent-orange {
-  background: linear-gradient(155deg, rgba(255, 122, 51, 0.24), rgba(255, 122, 51, 0.06));
-  border-color: rgba(255, 122, 51, 0.35);
+  background: linear-gradient(155deg, #ff8a42, #ef651f);
+  border-color: transparent;
+  box-shadow: 0 10px 30px rgba(255, 122, 51, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
-.stat-card.accent-orange .stat-label { color: rgba(255, 165, 120, 0.85); }
+.stat-card.accent-orange .stat-label { color: rgba(26, 12, 2, 0.6); }
+.stat-card.accent-orange .stat-value { color: #1d0f06; }
+.stat-card.accent-orange .stat-sub { color: rgba(26, 12, 2, 0.58); }
 .stat-label {
   font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase;
   color: var(--fl-dim); font-weight: 700;
@@ -944,6 +958,17 @@ button.provider-pick:hover {
 }
 .section-sub {
   font-size: 12.5px; color: var(--fl-muted); font-weight: 500;
+}
+
+/* ── Settings: consolidated key ring ────────────────────────────── */
+.keyring { display: flex; flex-direction: column; }
+.keyring-item {
+  padding: 18px 0; border-top: 1px solid var(--fl-border);
+}
+.keyring-item.first { padding-top: 0; border-top: none; }
+.keyring-head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 12px;
 }
 
 /* ── Connection list ────────────────────────────────────────────── */
