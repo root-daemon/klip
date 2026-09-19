@@ -22,6 +22,13 @@
   --fl-ok-bg:       rgba(142, 189, 154, 0.12);
   --fl-danger:      #d88282;
   --fl-danger-bg:   rgba(216, 130, 130, 0.1);
+
+  /* ── Glass surfaces ──────────────────────────────────────────── */
+  --glass-bg:      rgba(255, 255, 255, 0.045);
+  --glass-bg-hover: rgba(255, 255, 255, 0.065);
+  --glass-border:  rgba(255, 255, 255, 0.09);
+  --glass-blur:    blur(22px) saturate(160%);
+  --glass-shadow:  0 10px 34px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 html, body, #root { width: 100%; height: 100%; overflow: hidden; }
@@ -39,10 +46,27 @@ body {
    Shell
    ══════════════════════════════════════════════════════════════════ */
 .panel-shell {
+  position: relative;
   display: flex;
   height: 100%;
   background: var(--fl-bg);
+  overflow: hidden;
 }
+/* Ambient amber/orange wash behind everything, so the glass cards
+   above actually have something to blur and tint — flat single-color
+   backdrops make backdrop-filter a no-op visually. */
+.panel-shell::before {
+  content: '';
+  position: absolute;
+  inset: -15%;
+  background:
+    radial-gradient(560px 420px at 12% -5%, rgba(255, 176, 32, 0.14), transparent 62%),
+    radial-gradient(680px 520px at 105% 105%, rgba(255, 122, 51, 0.11), transparent 60%),
+    radial-gradient(420px 420px at 60% 40%, rgba(255, 199, 95, 0.05), transparent 65%);
+  pointer-events: none;
+  z-index: 0;
+}
+.panel-shell > * { position: relative; z-index: 1; }
 
 /* ── Sidebar ─────────────────────────────────────────────────────── */
 .sidebar {
@@ -129,7 +153,7 @@ body {
   margin: 0 0 10px;
   color: var(--fl-ink);
 }
-.main-h1 em { font-style: normal; color: var(--fl-dim); font-weight: 700; }
+.main-h1 em { font-style: normal; color: var(--accent); font-weight: 700; }
 .main-lead {
   font-size: 14px; color: var(--fl-muted); line-height: 1.6;
   margin: 0 0 28px; max-width: 560px;
@@ -139,10 +163,17 @@ body {
 .home-hero {
   display: flex; align-items: center; gap: 28px;
   padding: 32px;
-  background: var(--fl-surface);
-  border: 1px solid var(--fl-border);
-  border-radius: 20px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 22px;
   margin-bottom: 24px;
+}
+.home-pet {
+  flex-shrink: 0;
+  filter: drop-shadow(0 8px 20px var(--pet-glow-soft));
 }
 .home-wave-wrap {
   flex: 1;
@@ -191,10 +222,31 @@ body {
   gap: 14px; margin-bottom: 24px;
 }
 .stat-card {
-  background: var(--fl-surface);
-  border: 1px solid var(--fl-border);
-  border-radius: 16px; padding: 20px 22px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 18px; padding: 20px 22px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
+.stat-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+/* Bold accent blocks — for the one or two cards that should pop like
+   the reference dashboard's color-filled hero tiles, rather than
+   every card reading as the same neutral glass. */
+.stat-card.accent-yellow {
+  background: linear-gradient(155deg, rgba(244, 228, 9, 0.22), rgba(244, 228, 9, 0.06));
+  border-color: rgba(244, 228, 9, 0.35);
+}
+.stat-card.accent-yellow .stat-label { color: rgba(244, 228, 9, 0.75); }
+.stat-card.accent-orange {
+  background: linear-gradient(155deg, rgba(255, 122, 51, 0.24), rgba(255, 122, 51, 0.06));
+  border-color: rgba(255, 122, 51, 0.35);
+}
+.stat-card.accent-orange .stat-label { color: rgba(255, 165, 120, 0.85); }
 .stat-label {
   font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase;
   color: var(--fl-dim); font-weight: 700;
@@ -212,9 +264,12 @@ body {
 
 /* ── Provider summary ────────────────────────────────────────────── */
 .provider-summary {
-  background: var(--fl-surface);
-  border: 1px solid var(--fl-border);
-  border-radius: 16px; padding: 20px 22px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 18px; padding: 20px 22px;
 }
 .provider-summary h3 {
   font-family: 'Plus Jakarta Sans', sans-serif;
@@ -245,9 +300,12 @@ body {
    Section cards
    ══════════════════════════════════════════════════════════════════ */
 .section {
-  background: var(--fl-surface);
-  border: 1px solid var(--fl-border);
-  border-radius: 16px; padding: 22px 24px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 18px; padding: 22px 24px;
   margin-bottom: 16px;
 }
 .section-title {

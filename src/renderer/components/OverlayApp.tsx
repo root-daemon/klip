@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { VoiceState, WalkthroughStep, TypeRequest, DisplayInfo } from '../../shared/types';
 import { Waveform } from './Waveform';
 import { KlipPet, type PetMood } from './KlipPet';
+import { AdaptiveCursor } from './AdaptiveCursor';
 
 // Vite resolves `new URL(..., import.meta.url)` at build time and emits
 // the worklet as a static asset. The `.js` file is hand-written plain
@@ -52,6 +53,10 @@ export function OverlayApp() {
   const [cursorMode, setCursorMode] = useState<CursorMode>('following');
   const [companionPos, setCompanionPos] = useState({ x: 0, y: 0 });
   const [isCursorOnThisDisplay, setIsCursorOnThisDisplay] = useState(false);
+  // Lightweight, purely cosmetic — the "adaptive intelligence" indicator
+  // that rides beside the real cursor. Separate from companionPos/dockPos,
+  // which govern the pet's own (now stationary) position.
+  const [adaptiveCursorPos, setAdaptiveCursorPos] = useState({ x: 0, y: 0 });
   const [typeToast, setTypeToast] = useState<TypeRequest | null>(null);
   const typeToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // A brief happy/concerned reaction overrides the base voice-state mood
@@ -300,9 +305,10 @@ export function OverlayApp() {
     const unsubs = [
       window.klip.onVoiceStateChanged(setVoiceState),
       window.klip.onCursorPosition((pos) => {
-        // Only used to decide whether the clipboard/type toast (which
-        // follows the user's actual attention) should show on this
-        // display — the pet itself no longer tracks the cursor.
+        // Decides whether the clipboard/type toast and the small
+        // adaptive-intelligence cursor indicator — both of which follow
+        // the user's actual attention — should show on this display.
+        // The pet itself no longer tracks the cursor.
         if ((pos as { off?: boolean }).off) {
           setIsCursorOnThisDisplay(false);
           return;
@@ -316,6 +322,7 @@ export function OverlayApp() {
           pos.x >= bounds.x && pos.x < bounds.x + bounds.width &&
           pos.y >= bounds.y && pos.y < bounds.y + bounds.height;
         setIsCursorOnThisDisplay(onThis);
+        if (onThis) setAdaptiveCursorPos({ x: pos.x - bounds.x, y: pos.y - bounds.y });
       }),
       window.klip.onWalkthrough((w) => {
         // Cache the steps. Main drives advancement via WALKTHROUGH_STEP.
@@ -481,6 +488,10 @@ export function OverlayApp() {
             </div>
           )}
         </>
+      )}
+
+      {isCursorOnThisDisplay && !isNavigating && !isHolding && (
+        <AdaptiveCursor x={adaptiveCursorPos.x} y={adaptiveCursorPos.y} />
       )}
 
       {typeToast && isCursorOnThisDisplay && (

@@ -1,5 +1,7 @@
+import { motion } from 'framer-motion';
 import type { KlipSettings, VoiceState, MemoryStats } from '../../../shared/types';
 import { Waveform } from '../Waveform';
+import { KlipPet } from '../KlipPet';
 import { Tour } from './Tour';
 
 interface HomeTabProps {
@@ -20,6 +22,15 @@ const MIND_LOGO: Record<string, { text: string; cls: string; label: string }> = 
   openai: { text: 'Ai', cls: 'openai', label: 'OpenAI' },
   gemini: { text: 'G', cls: 'gemini', label: 'Gemini' },
   ollama: { text: '⬡', cls: 'local', label: 'Local' },
+};
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 12 },
+  show: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: i * 0.06, duration: 0.35, ease: [0.22, 1, 0.36, 1] as const },
+  }),
 };
 
 export function HomeTab({ voiceState, settings, memory, onNavigate }: HomeTabProps) {
@@ -62,6 +73,7 @@ export function HomeTab({ voiceState, settings, memory, onNavigate }: HomeTabPro
 
   const shortcutKeys = settings.pushToTalkShortcut.split('+').filter(Boolean);
   const mindLogo = MIND_LOGO[mindProvider] ?? MIND_LOGO.anthropic;
+  const petMood = ready ? voiceState : 'idle';
 
   return (
     <>
@@ -74,7 +86,10 @@ export function HomeTab({ voiceState, settings, memory, onNavigate }: HomeTabPro
           : `${connectedCount} of ${total} providers connected. Add the remaining keys to start talking.`}
       </p>
 
-      <div className="home-hero">
+      <motion.div className="home-hero" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}>
+        <div className="home-pet">
+          <KlipPet mood={petMood} size={64} />
+        </div>
         <div className="home-wave-wrap">
           <Waveform state={ready ? voiceState : 'idle'} bars={23} height={72} />
           {ready ? (
@@ -116,31 +131,48 @@ export function HomeTab({ voiceState, settings, memory, onNavigate }: HomeTabPro
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       <div className="stat-grid">
-        <div className="stat-card">
-          <div className="stat-label">Memory</div>
-          <div className="stat-value">{formatTokens(memory?.tokens ?? 0)}</div>
-          <div className="stat-sub">of {formatTokens(memory?.tokenBudget ?? 250_000)} tokens ({pct}%)</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Model</div>
-          <div className="stat-value" style={{ fontSize: 22, lineHeight: 1.15 }}>{modelLabel}</div>
-          <div className="stat-sub">{settings.reasoningDepth === 'off' ? 'no extended thinking' : `${settings.reasoningDepth} reasoning`}</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-label">Messages</div>
-          <div className="stat-value">{memory?.messageCount ?? 0}</div>
-          <div className="stat-sub">
-            {memory?.summarizedCount
-              ? `${memory.summarizedCount} summarized`
-              : 'in this session'}
-          </div>
-        </div>
+        {[
+          {
+            cls: 'accent-yellow',
+            label: 'Memory',
+            value: formatTokens(memory?.tokens ?? 0),
+            sub: `of ${formatTokens(memory?.tokenBudget ?? 250_000)} tokens (${pct}%)`,
+          },
+          {
+            cls: 'accent-orange',
+            label: 'Model',
+            value: modelLabel,
+            valueSmall: true,
+            sub: settings.reasoningDepth === 'off' ? 'no extended thinking' : `${settings.reasoningDepth} reasoning`,
+          },
+          {
+            cls: '',
+            label: 'Messages',
+            value: String(memory?.messageCount ?? 0),
+            sub: memory?.summarizedCount ? `${memory.summarizedCount} summarized` : 'in this session',
+          },
+        ].map((card, i) => (
+          <motion.div
+            key={card.label}
+            className={`stat-card ${card.cls}`}
+            custom={i}
+            initial="hidden"
+            animate="show"
+            variants={fadeUp}
+          >
+            <div className="stat-label">{card.label}</div>
+            <div className="stat-value" style={card.valueSmall ? { fontSize: 22, lineHeight: 1.15 } : undefined}>
+              {card.value}
+            </div>
+            <div className="stat-sub">{card.sub}</div>
+          </motion.div>
+        ))}
       </div>
 
-      <div className="provider-summary">
+      <motion.div className="provider-summary" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}>
         <h3>Connected providers</h3>
         <div className="provider-row">
           <div className={`provider-logo ${mindLogo.cls}`}>{mindLogo.text}</div>
@@ -184,7 +216,7 @@ export function HomeTab({ voiceState, settings, memory, onNavigate }: HomeTabPro
             <button className="goto" onClick={() => onNavigate('ear')}>Add key →</button>
           )}
         </div>
-      </div>
+      </motion.div>
 
       <Tour shortcut={settings.pushToTalkShortcut} onNavigate={onNavigate} />
     </>

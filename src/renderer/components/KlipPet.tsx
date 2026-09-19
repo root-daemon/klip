@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
-import { motion, useAnimation } from 'framer-motion';
+import { AnimatePresence, motion, useAnimation } from 'framer-motion';
 import type { VoiceState } from '../../shared/types';
 
 /** VoiceState plus two transient reaction states the overlay/panel can
@@ -20,15 +20,34 @@ const EYE_W = 7;
 const EYE_H = 16;
 const EYE_GAP = 11;
 const EYE_CY = 24;
+const HAND_CX = 38;
+const HAND_CY = 37;
+const HAND_R = 5;
 
 const SPRING = { duration: 0.4, ease: [0.34, 1.56, 0.64, 1] as const };
 
+/** A gentle dome — "^" happy-squint eye — used only for `success`. */
+function happyArcPath(ex: number, ey: number): string {
+  return `M ${ex - 5.2} ${ey + 1.5} Q ${ex} ${ey - 5.5} ${ex + 5.2} ${ey + 1.5}`;
+}
+
+/** A soft sag — worried-squint eye — used only for `error`. */
+function worriedArcPath(ex: number, ey: number): string {
+  return `M ${ex - 4.6} ${ey - 1.2} Q ${ex} ${ey + 4} ${ex + 4.6} ${ey - 1.2}`;
+}
+
 /**
  * The KLIP companion: a dark circular body with two glowing capsule
- * eyes, no mouth. Emotion reads entirely through eye shape, motion and
- * glow — driven by imperative AnimationControls rather than declarative
- * variants so a blink (its own transform layer, one level up from the
- * eye shape) never has to fight the mood animation for the same values.
+ * eyes, no mouth, plus a small hand that peeks out to wave. Emotion
+ * reads through eye shape, motion and glow — driven by imperative
+ * AnimationControls rather than declarative variants so a blink (its
+ * own transform layer, one level above the eye shape) never has to
+ * fight the mood animation for the same values.
+ *
+ * `success`/`error` swap the capsule for a drawn arc (happy squint /
+ * worried squint) rather than squashing+rotating the capsule — a
+ * heavily flattened, rotated rect reads as a wedge/horn at small
+ * sizes, not an expression.
  */
 export function KlipPet({ mood, size = 44, className, style }: KlipPetProps) {
   const raw = useId();
@@ -39,44 +58,50 @@ export function KlipPet({ mood, size = 44, className, style }: KlipPetProps) {
   const blink = useAnimation();
   const leftEye = useAnimation();
   const rightEye = useAnimation();
+  const hand = useAnimation();
   const blinkingRef = useRef(false);
+
+  const isHappy = mood === 'success';
+  const isWorried = mood === 'error';
+  const showCapsuleEyes = !isHappy && !isWorried;
 
   useEffect(() => {
     switch (mood) {
       case 'idle':
-        body.start({ scale: [1, 1.015, 1], x: 0, rotate: 0, transition: { duration: 3.2, repeat: Infinity, ease: 'easeInOut' } });
-        leftEye.start({ scaleY: 1, scaleX: 1, y: 0, x: 0, rotate: 0, transition: SPRING });
-        rightEye.start({ scaleY: 1, scaleX: 1, y: 0, x: 0, rotate: 0, transition: SPRING });
+        body.start({ scale: [1, 1.015, 1], x: 0, y: 0, rotate: 0, transition: { duration: 3.2, repeat: Infinity, ease: 'easeInOut' } });
+        leftEye.start({ scaleY: 1, scaleX: 1, y: 0, x: 0, transition: SPRING });
+        rightEye.start({ scaleY: 1, scaleX: 1, y: 0, x: 0, transition: SPRING });
         glow.start({ opacity: 0.32, scale: 1, transition: { duration: 0.5 } });
         break;
       case 'listening':
-        body.start({ scale: [1, 1.045, 1], x: 0, rotate: 0, transition: { duration: 1.05, repeat: Infinity, ease: 'easeInOut' } });
-        leftEye.start({ scaleY: 1.28, scaleX: 1, y: -1, x: 0, rotate: 0, transition: SPRING });
-        rightEye.start({ scaleY: 1.28, scaleX: 1, y: -1, x: 0, rotate: 0, transition: SPRING });
+        body.start({ scale: [1, 1.045, 1], x: 0, y: 0, rotate: 0, transition: { duration: 1.05, repeat: Infinity, ease: 'easeInOut' } });
+        leftEye.start({ scaleY: 1.28, scaleX: 1, y: -1, x: 0, transition: SPRING });
+        rightEye.start({ scaleY: 1.28, scaleX: 1, y: -1, x: 0, transition: SPRING });
         glow.start({ opacity: [0.55, 0.95, 0.55], scale: [1.1, 1.4, 1.1], transition: { duration: 1.1, repeat: Infinity, ease: 'easeInOut' } });
         break;
       case 'processing':
-        body.start({ rotate: [-3, 3, -3], scale: 1, x: 0, transition: { duration: 1.7, repeat: Infinity, ease: 'easeInOut' } });
-        leftEye.start({ scaleY: 0.62, scaleX: 1, y: 0, x: [-1.5, 1.5, -1.5], rotate: 0, transition: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' } });
-        rightEye.start({ scaleY: 0.62, scaleX: 1, y: 0, x: [1.5, -1.5, 1.5], rotate: 0, transition: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' } });
+        // A little head-tilt-and-bob "thinking" pose: eyes narrow, drift
+        // side to side and lift slightly, like glancing up in thought.
+        body.start({ rotate: [-3, 3, -3], y: [0, -1.5, 0], scale: 1, x: 0, transition: { duration: 1.7, repeat: Infinity, ease: 'easeInOut' } });
+        leftEye.start({ scaleY: 0.62, scaleX: 1, y: [-1, -2.2, -1], x: [-1.5, 1.5, -1.5], transition: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' } });
+        rightEye.start({ scaleY: 0.62, scaleX: 1, y: [-1, -2.2, -1], x: [1.5, -1.5, 1.5], transition: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' } });
         glow.start({ opacity: [0.4, 0.7, 0.4], scale: [1, 1.2, 1], transition: { duration: 0.9, repeat: Infinity, ease: 'easeInOut' } });
         break;
       case 'responding':
-        body.start({ scale: [1, 1.02, 0.985, 1.02, 1], x: 0, rotate: 0, transition: { duration: 0.85, repeat: Infinity, ease: 'easeInOut' } });
-        leftEye.start({ scaleY: [1, 0.68, 1.18, 0.82, 1], scaleX: 1, y: 0, x: 0, rotate: 0, transition: { duration: 0.85, repeat: Infinity, ease: 'easeInOut' } });
-        rightEye.start({ scaleY: [1, 0.85, 1.15, 0.7, 1], scaleX: 1, y: 0, x: 0, rotate: 0, transition: { duration: 0.85, repeat: Infinity, ease: 'easeInOut' } });
+        body.start({ scale: [1, 1.02, 0.985, 1.02, 1], x: 0, y: 0, rotate: 0, transition: { duration: 0.85, repeat: Infinity, ease: 'easeInOut' } });
+        leftEye.start({ scaleY: [1, 0.68, 1.18, 0.82, 1], scaleX: 1, y: 0, x: 0, transition: { duration: 0.85, repeat: Infinity, ease: 'easeInOut' } });
+        rightEye.start({ scaleY: [1, 0.85, 1.15, 0.7, 1], scaleX: 1, y: 0, x: 0, transition: { duration: 0.85, repeat: Infinity, ease: 'easeInOut' } });
         glow.start({ opacity: [0.6, 0.9, 0.6], scale: [1.15, 1.32, 1.15], transition: { duration: 0.5, repeat: Infinity, ease: 'easeInOut' } });
         break;
       case 'success':
-        body.start({ scale: [1, 1.2, 0.93, 1.05, 1], x: 0, rotate: 0, transition: { duration: 0.65, ease: 'easeOut' } });
-        leftEye.start({ scaleY: 0.32, scaleX: 1.05, y: 2, x: 0, rotate: -10, transition: { duration: 0.22, ease: 'easeOut' } });
-        rightEye.start({ scaleY: 0.32, scaleX: 1.05, y: 2, x: 0, rotate: 10, transition: { duration: 0.22, ease: 'easeOut' } });
+        // Eyes become the drawn happy arc below — a cheerful little
+        // bounce is all the capsule-driven body/glow need to do.
+        body.start({ scale: [1, 1.22, 0.92, 1.06, 1], x: 0, y: [0, -3, 0, -1, 0], rotate: 0, transition: { duration: 0.6, ease: 'easeOut' } });
         glow.start({ opacity: [0.9, 1, 0.7], scale: [1.3, 1.6, 1.2], transition: { duration: 0.6, ease: 'easeOut' } });
         break;
       case 'error':
-        body.start({ x: [0, -3, 3, -2, 2, 0], scale: 1, rotate: 0, transition: { duration: 0.4 } });
-        leftEye.start({ scaleY: 0.78, scaleX: 1, y: 1, x: 0, rotate: 14, transition: { duration: 0.25 } });
-        rightEye.start({ scaleY: 0.78, scaleX: 1, y: 1, x: 0, rotate: -14, transition: { duration: 0.25 } });
+        // Eyes become the drawn worried arc below.
+        body.start({ x: [0, -3, 3, -2, 2, 0], y: 0, scale: 1, rotate: 0, transition: { duration: 0.4 } });
         glow.start({ opacity: 0.85, scale: 1.15, transition: { duration: 0.3 } });
         break;
     }
@@ -87,7 +112,7 @@ export function KlipPet({ mood, size = 44, className, style }: KlipPetProps) {
   // whatever the mood animation is doing to eye shape instead of racing
   // it for the same scaleY value.
   useEffect(() => {
-    if (mood === 'success' || mood === 'error') return;
+    if (!showCapsuleEyes) return;
     let timer: ReturnType<typeof setTimeout>;
     const scheduleBlink = () => {
       const delay = 1800 + Math.random() * 3200;
@@ -105,10 +130,76 @@ export function KlipPet({ mood, size = 44, className, style }: KlipPetProps) {
     };
     scheduleBlink();
     return () => clearTimeout(timer);
-  }, [mood, blink]);
+  }, [showCapsuleEyes, blink]);
+
+  // A cute idle quirk: every so often, glance to one side and back —
+  // independent of blink, only while genuinely idle (mood's own idle
+  // pose is a one-shot settle, not a repeating loop, so it never fights
+  // this for the same values).
+  useEffect(() => {
+    if (mood !== 'idle') return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const scheduleGlance = () => {
+      const delay = 5000 + Math.random() * 6000;
+      timer = setTimeout(async () => {
+        if (cancelled) return;
+        const dir = Math.random() > 0.5 ? 1 : -1;
+        await Promise.all([
+          leftEye.start({ x: 2.5 * dir, transition: { duration: 0.28, ease: 'easeOut' } }),
+          rightEye.start({ x: 2.5 * dir, transition: { duration: 0.28, ease: 'easeOut' } }),
+        ]);
+        if (cancelled) return;
+        await new Promise((r) => setTimeout(r, 450));
+        if (cancelled) return;
+        await Promise.all([
+          leftEye.start({ x: 0, transition: { duration: 0.3, ease: 'easeOut' } }),
+          rightEye.start({ x: 0, transition: { duration: 0.3, ease: 'easeOut' } }),
+        ]);
+        scheduleGlance();
+      }, delay);
+    };
+    scheduleGlance();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [mood, leftEye, rightEye]);
+
+  // A little hand peeks out and waves every so often while idle.
+  useEffect(() => {
+    if (mood !== 'idle') return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const scheduleWave = () => {
+      const delay = 9000 + Math.random() * 8000;
+      timer = setTimeout(async () => {
+        if (cancelled) return;
+        await hand.start({
+          opacity: 1,
+          scale: 1,
+          rotate: [0, -22, 12, -18, 8, 0],
+          transition: { duration: 1.1, ease: 'easeInOut' },
+        });
+        if (cancelled) return;
+        await hand.start({ opacity: 0, scale: 0, transition: { duration: 0.25, ease: 'easeIn' } });
+        scheduleWave();
+      }, delay);
+    };
+    scheduleWave();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [mood, hand]);
 
   const bodyGradId = `klip-body-${uid}`;
   const glowFilterId = `klip-glow-${uid}`;
+  const leftEyeX = CX - EYE_GAP;
+  const rightEyeX = CX + EYE_GAP;
+
+  const emotedPath = isHappy ? happyArcPath : isWorried ? worriedArcPath : null;
+  const emotedColor = isWorried ? 'var(--destructive)' : 'var(--pet-glow)';
 
   return (
     <svg
@@ -130,6 +221,18 @@ export function KlipPet({ mood, size = 44, className, style }: KlipPetProps) {
       </defs>
 
       <motion.g animate={body} initial={false} style={{ transformBox: 'fill-box', transformOrigin: 'center' }}>
+        <motion.circle
+          cx={HAND_CX}
+          cy={HAND_CY}
+          r={HAND_R}
+          fill={`url(#${bodyGradId})`}
+          stroke="rgba(255,255,255,0.07)"
+          strokeWidth="1"
+          animate={hand}
+          initial={{ opacity: 0, scale: 0 }}
+          style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
+        />
+
         <circle cx={CX} cy={CY} r={BODY_R} fill={`url(#${bodyGradId})`} stroke="rgba(255,255,255,0.07)" strokeWidth="1" />
 
         <motion.circle
@@ -143,33 +246,57 @@ export function KlipPet({ mood, size = 44, className, style }: KlipPetProps) {
           style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
         />
 
-        <motion.g animate={blink} initial={false} style={{ transformBox: 'fill-box', transformOrigin: 'center' }}>
-          <motion.rect
-            x={CX - EYE_GAP - EYE_W / 2}
-            y={EYE_CY - EYE_H / 2}
-            width={EYE_W}
-            height={EYE_H}
-            rx={EYE_W / 2}
-            fill="var(--pet-glow)"
-            animate={leftEye}
-            initial={false}
-            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
-          />
-        </motion.g>
+        <AnimatePresence mode="wait" initial={false}>
+          {emotedPath ? (
+            <motion.g
+              key="emoted-eyes"
+              initial={{ opacity: 0, scale: 0.6 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.6 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
+            >
+              <path d={emotedPath(leftEyeX, EYE_CY)} stroke={emotedColor} strokeWidth={3.2} strokeLinecap="round" fill="none" />
+              <path d={emotedPath(rightEyeX, EYE_CY)} stroke={emotedColor} strokeWidth={3.2} strokeLinecap="round" fill="none" />
+            </motion.g>
+          ) : (
+            <motion.g
+              key="capsule-eyes"
+              initial={{ opacity: 0, scale: 0.6 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.6 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+            >
+              <motion.g animate={blink} initial={false} style={{ transformBox: 'fill-box', transformOrigin: 'center' }}>
+                <motion.g animate={leftEye} initial={false} style={{ transformBox: 'fill-box', transformOrigin: 'center' }}>
+                  <rect
+                    x={leftEyeX - EYE_W / 2}
+                    y={EYE_CY - EYE_H / 2}
+                    width={EYE_W}
+                    height={EYE_H}
+                    rx={EYE_W / 2}
+                    fill="var(--pet-glow)"
+                  />
+                  <circle cx={leftEyeX - 1.3} cy={EYE_CY - EYE_H / 2 + 3.6} r={1.1} fill="rgba(255,255,255,0.85)" />
+                </motion.g>
+              </motion.g>
 
-        <motion.g animate={blink} initial={false} style={{ transformBox: 'fill-box', transformOrigin: 'center' }}>
-          <motion.rect
-            x={CX + EYE_GAP - EYE_W / 2}
-            y={EYE_CY - EYE_H / 2}
-            width={EYE_W}
-            height={EYE_H}
-            rx={EYE_W / 2}
-            fill="var(--pet-glow)"
-            animate={rightEye}
-            initial={false}
-            style={{ transformBox: 'fill-box', transformOrigin: 'center' }}
-          />
-        </motion.g>
+              <motion.g animate={blink} initial={false} style={{ transformBox: 'fill-box', transformOrigin: 'center' }}>
+                <motion.g animate={rightEye} initial={false} style={{ transformBox: 'fill-box', transformOrigin: 'center' }}>
+                  <rect
+                    x={rightEyeX - EYE_W / 2}
+                    y={EYE_CY - EYE_H / 2}
+                    width={EYE_W}
+                    height={EYE_H}
+                    rx={EYE_W / 2}
+                    fill="var(--pet-glow)"
+                  />
+                  <circle cx={rightEyeX - 1.3} cy={EYE_CY - EYE_H / 2 + 3.6} r={1.1} fill="rgba(255,255,255,0.85)" />
+                </motion.g>
+              </motion.g>
+            </motion.g>
+          )}
+        </AnimatePresence>
       </motion.g>
     </svg>
   );
