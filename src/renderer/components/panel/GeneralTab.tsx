@@ -180,8 +180,8 @@ export function GeneralTab({ settings, memory }: GeneralTabProps) {
         <div className="section-title" style={{ marginBottom: 4 }}>Companion</div>
         <div className="row">
           <div className="row-main">
-            <div className="row-t">Show cursor</div>
-            <div className="row-s">blue pointer that flies to things KLIP mentions</div>
+            <div className="row-t">Show companion</div>
+            <div className="row-s">the KLIP pet and its cursor — hides both when off</div>
           </div>
           <button
             className={`toggle ${settings.isClickyCursorEnabled ? 'on' : ''}`}
