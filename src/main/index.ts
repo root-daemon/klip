@@ -13,7 +13,7 @@ import * as chatHistory from './services/chat-history-store';
 import * as settingsStore from './services/settings-store';
 import { setApiKey, getApiKey, deleteApiKey } from './services/key-store';
 import { validateApiKey, validateStoredApiKey } from './services/key-validation';
-import { OllamaAPI } from './services/ollama-api';
+import { OllamaAPI, DEFAULT_OLLAMA_URL } from './services/ollama-api';
 import { initGpuGuard, confirmGpuHealthy } from './services/gpu-guard';
 import { randomUUID } from 'crypto';
 
@@ -210,6 +210,9 @@ app.whenReady().then(() => {
     onError: (message) => {
       sendToPanel(IPC.AI_ERROR, message);
       sendToStream(IPC.AI_ERROR, message);
+    },
+    onActiveSpecialistChanged: (specialist) => {
+      sendToAll(IPC.ACTIVE_SPECIALIST_CHANGED, specialist);
     },
     onWalkthrough: (w) => {
       walkthroughActive = !!w;
@@ -545,6 +548,77 @@ app.whenReady().then(() => {
 
   ipcMain.handle(IPC.TEST_LOCAL_CONNECTION, (_e, url: string, bearerToken?: string) => {
     return ollamaAPI.testConnection(url, bearerToken);
+  });
+
+  // One-click Ollama pairing: detect the default local instance, pull its
+  // real installed models, and wire up (or update) a connection with no
+  // manual typing — in particular no "Prefix ID", which is only meaningful
+  // for router services (OpenRouter/LiteLLM) and, if a user copies that
+  // convention onto a direct local connection, produces exactly the
+  // "invalid model name" 400 Ollama itself returns for an unknown tag.
+  ipcMain.handle(IPC.QUICK_CONNECT_OLLAMA, async () => {
+    const url = DEFAULT_OLLAMA_URL;
+    const test = await ollamaAPI.testConnection(url);
+    if (!test.ok) {
+      return {
+        ok: false,
+        error:
+          test.error === 'Connection timed out' || /ECONNREFUSED|fetch failed/i.test(test.error ?? '')
+            ? `Couldn't reach Ollama at ${url}. Install it from ollama.com and make sure it's running, then try again.`
+            : `Couldn't reach Ollama: ${test.error ?? 'unknown error'}`,
+      };
+    }
+
+    const models = await ollamaAPI.getModelDetails(url);
+    if (models.length === 0) {
+      return {
+        ok: false,
+        error: 'Ollama is running but has no models installed. Run "ollama pull llama3.2" in a terminal, then try again.',
+      };
+    }
+
+    const modelNames = models.map((m) => m.name);
+    const selected = modelNames[0];
+    const connections = settingsStore.get('localConnections') ?? [];
+    const normalizedUrl = url.replace(/\/$/, '');
+    const existing = connections.find(
+      (c) => c.type === 'local' && c.url.replace(/\/$/, '') === normalizedUrl,
+    );
+
+    let saved: LocalConnection;
+    let nextConnections: LocalConnection[];
+    if (existing) {
+      saved = {
+        ...existing,
+        enabled: true,
+        // Clear a prior bad prefix rather than leave it silently corrupting
+        // whatever model gets selected.
+        prefixId: undefined,
+        activeModelId: existing.activeModelId && modelNames.includes(existing.activeModelId)
+          ? existing.activeModelId
+          : selected,
+      };
+      nextConnections = connections.map((c) => (c.id === existing.id ? saved : c));
+    } else {
+      saved = {
+        id: randomUUID(),
+        type: 'local',
+        label: 'Ollama',
+        url,
+        enabled: true,
+        bearerEnabled: false,
+        prefixId: undefined,
+        modelIds: [],
+        activeModelId: selected,
+        tags: [],
+      };
+      nextConnections = [...connections, saved];
+    }
+    settingsStore.set('localConnections', nextConnections);
+    companion.setMindProvider('ollama');
+    emitLocalConnections();
+
+    return { ok: true, connectionId: saved.id, models: modelNames, selectedModel: saved.activeModelId };
   });
 
   ipcMain.handle(IPC.SET_LOCAL_CONNECTION_KEY, (_e, id: string, token: string) => {

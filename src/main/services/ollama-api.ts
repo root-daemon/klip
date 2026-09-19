@@ -2,6 +2,7 @@ import type {
   ConversationTurn,
   ScreenCapture,
   ReplyTone,
+  ActiveSpecialist,
   OllamaModelInfo,
   OllamaPullProgress,
 } from '../../shared/types';
@@ -31,6 +32,8 @@ export interface OllamaStreamCallbacks {
 
 export interface OllamaChatOptions {
   replyTone: ReplyTone;
+  /** Local intent-router classification for this turn — see intent-router.ts. */
+  specialist?: ActiveSpecialist;
   signal?: AbortSignal;
 }
 
@@ -40,6 +43,17 @@ export interface OllamaTestResult {
   modelCount?: number;
   error?: string;
 }
+
+export interface QuickConnectResult {
+  ok: boolean;
+  error?: string;
+  connectionId?: string;
+  models?: string[];
+  selectedModel?: string;
+}
+
+/** The port Ollama binds to by default on every platform. */
+export const DEFAULT_OLLAMA_URL = 'http://localhost:11434';
 
 function authHeaders(bearerToken?: string): Record<string, string> {
   if (bearerToken) return { Authorization: `Bearer ${bearerToken}` };
@@ -262,7 +276,7 @@ export class OllamaAPI {
     baseUrl: string,
     bearerToken?: string,
   ): Promise<void> {
-    const systemPrompt = buildSystemPrompt(options.replyTone, { hasWebSearch: false });
+    const systemPrompt = buildSystemPrompt(options.replyTone, { hasWebSearch: false, specialist: options.specialist });
     const vision = isVisionModel(model);
 
     const messages: Array<{ role: string; content: unknown }> = [

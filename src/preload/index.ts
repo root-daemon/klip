@@ -11,6 +11,7 @@ import type {
   TranscriptionProviderType,
   KlipSettings,
   VoiceState,
+  ActiveSpecialist,
   TranscriptionResult,
   Walkthrough,
   TypeRequest,
@@ -28,7 +29,7 @@ import type {
   PermissionStatus,
   DisplayInfo,
 } from '../shared/types';
-import type { OllamaTestResult } from '../main/services/ollama-api';
+import type { OllamaTestResult, QuickConnectResult } from '../main/services/ollama-api';
 
 /**
  * Display info handed to overlay windows via `additionalArguments`.
@@ -136,6 +137,11 @@ const api = {
     ipcRenderer.on(IPC.AI_ERROR, handler);
     return () => ipcRenderer.removeListener(IPC.AI_ERROR, handler);
   },
+  onActiveSpecialistChanged: (cb: (specialist: ActiveSpecialist) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, specialist: ActiveSpecialist) => cb(specialist);
+    ipcRenderer.on(IPC.ACTIVE_SPECIALIST_CHANGED, handler);
+    return () => ipcRenderer.removeListener(IPC.ACTIVE_SPECIALIST_CHANGED, handler);
+  },
 
   // ── Memory / context ───────────────────────────────────────────────
   getMemoryStats: (): Promise<MemoryStats> => ipcRenderer.invoke(IPC.GET_MEMORY_STATS),
@@ -158,6 +164,8 @@ const api = {
     ipcRenderer.invoke(IPC.DELETE_LOCAL_CONNECTION, id),
   testLocalConnection: (url: string, bearerToken?: string): Promise<OllamaTestResult> =>
     ipcRenderer.invoke(IPC.TEST_LOCAL_CONNECTION, url, bearerToken),
+  quickConnectOllama: (): Promise<QuickConnectResult> =>
+    ipcRenderer.invoke(IPC.QUICK_CONNECT_OLLAMA),
   getOllamaModels: (url: string, bearerToken?: string): Promise<OllamaModelInfo[]> =>
     ipcRenderer.invoke(IPC.GET_OLLAMA_MODELS, url, bearerToken),
   setLocalConnectionKey: (id: string, token: string): Promise<void> =>

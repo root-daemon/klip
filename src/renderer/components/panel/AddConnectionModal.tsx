@@ -25,10 +25,13 @@ export function AddConnectionModal({ existing, onSave, onClose, onDelete }: AddC
   const [verifyState, setVerifyState] = useState<VerifyState>('idle');
   const [verifyResult, setVerifyResult] = useState<OllamaTestResult | null>(null);
 
-  // Pre-fill default URL for local type
+  // Pre-fill default URL for local type; the prefix field is hidden for
+  // local connections (see below) and doesn't apply to them at all, so
+  // clear any value left over from switching from "External".
   useEffect(() => {
-    if (!existing && connType === 'local' && !url) {
-      setUrl('http://localhost:11434');
+    if (connType === 'local') {
+      if (!existing && !url) setUrl('http://localhost:11434');
+      setPrefixId('');
     }
   }, [connType]);
 
@@ -185,18 +188,28 @@ export function AddConnectionModal({ existing, onSave, onClose, onDelete }: AddC
           </div>
         </div>
 
-        {/* Prefix ID */}
-        <div className="modal-field">
-          <div className="modal-label">Prefix ID</div>
-          <input
-            type="text"
-            className="modal-input"
-            placeholder="e.g. ollama/"
-            value={prefixId}
-            onChange={(e) => setPrefixId(e.target.value)}
-          />
-          <div className="modal-hint">Prepended to model names at inference time.</div>
-        </div>
+        {/* Prefix ID — only meaningful for router/aggregator services
+            (OpenRouter, LiteLLM) that need a provider namespace prepended
+            to route to the right backend. A direct local connection talks
+            straight to Ollama/LM Studio/vLLM, which don't understand a
+            prefix and will reject the model name outright if one is set. */}
+        {connType === 'external' && (
+          <div className="modal-field">
+            <div className="modal-label">Model prefix</div>
+            <input
+              type="text"
+              className="modal-input"
+              placeholder="e.g. ollama/ (only for router services)"
+              value={prefixId}
+              onChange={(e) => setPrefixId(e.target.value)}
+            />
+            <div className="modal-hint">
+              Prepended to the model name at inference time. Leave blank unless this endpoint is a
+              router that needs a provider namespace — a direct Ollama/LM Studio/vLLM server does
+              not use this and will reject the request if it's set.
+            </div>
+          </div>
+        )}
 
         {/* Model IDs */}
         <div className="modal-field">

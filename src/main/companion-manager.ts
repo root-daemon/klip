@@ -10,6 +10,7 @@ import { captureAllDisplays } from './services/screen-capture';
 import { parseAllPointTags, parseTypeTags, TAG_STRIP_REGEX } from './services/element-detector';
 import { typeText, isAccessibilityGranted, promptAccessibility } from './services/auto-typer';
 import { ContextManager } from './services/context-manager';
+import { classifyIntent } from './services/intent-router';
 import * as settingsStore from './services/settings-store';
 import type { StoredSettings } from './services/settings-store';
 import * as keyStore from './services/key-store';
@@ -38,6 +39,7 @@ import type {
   StreamVisibility,
   StreamWindowBounds,
   PermissionStatus,
+  ActiveSpecialist,
 } from '../shared/types';
 
 export interface CompanionCallbacks {
@@ -52,6 +54,8 @@ export interface CompanionCallbacks {
    * quiet. Surfaced to the panel / stream so the user learns *why*.
    */
   onError: (message: string) => void;
+  /** Which specialist is handling the in-flight turn — see intent-router.ts. */
+  onActiveSpecialistChanged: (specialist: ActiveSpecialist) => void;
   onWalkthrough: (walkthrough: Walkthrough | null) => void;
   /** Active step index (0-based) inside the current walkthrough, or null when idle. */
   onWalkthroughStep: (index: number | null) => void;
@@ -634,6 +638,9 @@ export class CompanionManager {
     this.callbacks.onTranscriptUpdate(result);
     analytics.trackUserMessageSent(result.text);
 
+    const specialist = classifyIntent(result.text);
+    this.callbacks.onActiveSpecialistChanged(specialist);
+
     this.setVoiceState('processing');
     try {
       this.lastScreenshots = await captureAllDisplays();
@@ -664,6 +671,7 @@ export class CompanionManager {
         }
       }
       this.setVoiceState('idle');
+      this.callbacks.onActiveSpecialistChanged(null);
       return;
     }
 
@@ -763,12 +771,14 @@ export class CompanionManager {
 
         if (!isCurrent()) return;
         this.setVoiceState('idle');
+        this.callbacks.onActiveSpecialistChanged(null);
       },
       onError: (err: Error) => {
         if (!isCurrent()) return;
         console.error('Mind provider error:', err);
         analytics.trackResponseError(err.message);
         this.setVoiceState('idle');
+        this.callbacks.onActiveSpecialistChanged(null);
         this.callbacks.onError(err.message);
       },
     };
@@ -776,6 +786,7 @@ export class CompanionManager {
     const mindOptions = {
       reasoningDepth: settings.reasoningDepth,
       replyTone: settings.replyTone,
+      specialist,
       signal: abort.signal,
     };
 
@@ -805,22 +816,34 @@ export class CompanionManager {
         return;
       }
       const bearerToken = keyStore.getApiKey(`local_${conn.id}`) ?? undefined;
-      let model: string;
+      let model: string | undefined;
       if (conn.activeModelId) {
         model = conn.activeModelId;
       } else if (conn.modelIds.length > 0) {
         model = conn.modelIds[0];
       } else {
         const discovered = await this.ollama.getModels(conn.url, bearerToken);
-        model = discovered[0] ?? 'llama3';
+        model = discovered[0];
       }
-      const fullModelId = conn.prefixId ? `${conn.prefixId}${model}` : model;
+      if (!model) {
+        // Guessing a model name (the old behavior hardcoded 'llama3',
+        // which rarely matches what's actually installed) just trades
+        // one confusing error for another. Say plainly what to do.
+        mindCallbacks.onError(new Error(
+          'No model selected for this connection. Open Mind → Local → Manage and pick an installed model.',
+        ));
+        return;
+      }
+      // `prefixId` is for router services (OpenRouter/LiteLLM) that need a
+      // provider namespace prepended — never for a direct local connection,
+      // where it just corrupts an otherwise-valid model name.
+      const fullModelId = conn.type === 'local' || !conn.prefixId ? model : `${conn.prefixId}${model}`;
       await this.ollama.streamChat(
         result.text,
         this.lastScreenshots,
         this.context.getMessagesForSend(),
         fullModelId,
-        { replyTone: mindOptions.replyTone, signal: mindOptions.signal },
+        { replyTone: mindOptions.replyTone, specialist: mindOptions.specialist, signal: mindOptions.signal },
         mindCallbacks,
         conn.url,
         bearerToken,

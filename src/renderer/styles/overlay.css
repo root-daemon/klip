@@ -28,6 +28,31 @@
   overflow: visible;
 }
 
+/* ── Specialist chip ───────────────────────────────────────────────── */
+/* Shown next to the pet while a turn is in flight, naming which
+   internal specialist (see intent-router.ts) is handling it. */
+
+.specialist-chip {
+  position: absolute;
+  padding: 4px 9px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: bubble-in 0.18s ease-out;
+  background: rgba(20, 20, 22, 0.85);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--pet-glow-soft);
+  color: var(--pet-glow);
+}
+
+.specialist-chip.desktop {
+  border-color: var(--pet-glow-desktop-soft);
+  color: var(--pet-glow-desktop);
+}
+
 .klip-pet-wrap.navigating {
   transform: scale(1.18);
 }

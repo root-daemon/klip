@@ -54,6 +54,12 @@
   --pet-glow:      #ffc75f;
   --pet-glow-soft: rgba(255, 199, 95, 0.35);
   --cursor-blue:   var(--pet-glow);
+  /* The "desktop" specialist's identity (see intent-router.ts) — a
+     turn resolving/pointing at something on screen gets this instead
+     of the default amber, so the two specialists read as visually
+     distinct while a turn is in flight. */
+  --pet-glow-desktop:      #ff8a42;
+  --pet-glow-desktop-soft: rgba(255, 138, 66, 0.38);
 
   /* ── Radius ─────────────────────────────────────────────────────── */
   --radius-sm:  8px;

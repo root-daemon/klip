@@ -1004,6 +1004,24 @@ button.provider-pick:hover {
   border-radius: 12px;
 }
 
+/* ── Ollama quick connect ───────────────────────────────────────── */
+.quick-connect {
+  display: flex; align-items: center; gap: 16px;
+  margin-top: 12px; padding: 14px 16px;
+  background: var(--accent-muted);
+  border: 1px solid rgba(255, 176, 32, 0.3);
+  border-radius: 14px;
+}
+.quick-connect-main { flex: 1; min-width: 0; }
+.quick-connect-title { font-size: 13px; font-weight: 600; color: var(--fl-ink); }
+.quick-connect-sub { font-size: 11.5px; color: var(--fl-muted); margin-top: 3px; line-height: 1.5; }
+.quick-connect-status {
+  margin-top: 8px; padding: 8px 12px;
+  font-size: 12px; line-height: 1.5; border-radius: 10px;
+}
+.quick-connect-status.ok { background: var(--fl-ok-bg); color: var(--fl-ok); }
+.quick-connect-status.err { background: var(--fl-danger-bg); color: var(--fl-danger); }
+
 /* ── Add connection modal ───────────────────────────────────────── */
 .modal-overlay {
   position: fixed; inset: 0;

@@ -4,6 +4,7 @@ import type {
   ClaudeModel,
   ReasoningDepth,
   ReplyTone,
+  ActiveSpecialist,
 } from '../../shared/types';
 import { getApiKey } from './key-store';
 import { buildSystemPrompt } from './prompts';
@@ -27,6 +28,8 @@ export interface ClaudeStreamCallbacks {
 export interface ClaudeChatOptions {
   reasoningDepth: ReasoningDepth;
   replyTone: ReplyTone;
+  /** Local intent-router classification for this turn — see intent-router.ts. */
+  specialist?: ActiveSpecialist;
   /** Aborting mid-stream is treated as a graceful interrupt, not an error. */
   signal?: AbortSignal;
 }
@@ -46,7 +49,7 @@ export class ClaudeAPI {
       return;
     }
 
-    const systemPrompt = buildSystemPrompt(options.replyTone, { hasWebSearch: true });
+    const systemPrompt = buildSystemPrompt(options.replyTone, { hasWebSearch: true, specialist: options.specialist });
 
     const imageContent = screenshots.map((sc) => ({
       type: 'image' as const,

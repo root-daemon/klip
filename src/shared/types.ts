@@ -2,6 +2,15 @@
 
 export type VoiceState = 'idle' | 'listening' | 'processing' | 'responding';
 
+/**
+ * Which internal specialist is handling the current turn. This is a real
+ * routing decision (see intent-router.ts), not cosmetic: `desktop` gets a
+ * prompt biased toward resolving an on-screen target and emitting
+ * POINT/TYPE tags; `conversation` gets the normal answer-focused prompt.
+ * `null` means idle — no turn in flight.
+ */
+export type ActiveSpecialist = 'conversation' | 'desktop' | null;
+
 export type BuddyNavigationMode =
   | 'followingCursor'
   | 'navigatingToTarget'
@@ -351,6 +360,8 @@ export const IPC = {
   CHAT_ENTRY_ADDED: 'chat-entry-added',
   /** A turn failed (bad key, network, provider error). Payload: message. */
   AI_ERROR: 'ai-error',
+  /** Which specialist is handling the in-flight turn, or null once idle. */
+  ACTIVE_SPECIALIST_CHANGED: 'active-specialist-changed',
   /** The push-to-talk accelerator fired (used by setup to verify it). */
   PTT_SHORTCUT_FIRED: 'ptt-shortcut-fired',
   /** Mic input level 0..1 while capture is active (throttled). */
@@ -423,6 +434,7 @@ export const IPC = {
   UPDATE_LOCAL_CONNECTION: 'update-local-connection',
   DELETE_LOCAL_CONNECTION: 'delete-local-connection',
   TEST_LOCAL_CONNECTION: 'test-local-connection',
+  QUICK_CONNECT_OLLAMA: 'quick-connect-ollama',
   GET_OLLAMA_MODELS: 'get-ollama-models',
   SET_LOCAL_CONNECTION_KEY: 'set-local-connection-key',
   DELETE_LOCAL_CONNECTION_KEY: 'delete-local-connection-key',

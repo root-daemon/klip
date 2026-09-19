@@ -1,4 +1,4 @@
-import type { ReplyTone } from '../../shared/types';
+import type { ReplyTone, ActiveSpecialist } from '../../shared/types';
 
 /**
  * Shared system-prompt pieces. Each provider composes these into its
@@ -54,12 +54,28 @@ export const TONE_STYLES: Record<ReplyTone, string> = {
     'tone: lowercase, warm, and thorough. explain your reasoning briefly when it helps. up to 4 sentences; expand further if the user asks.',
 };
 
+/**
+ * Appended based on the local intent-router's classification (see
+ * intent-router.ts). Same base model and same POINT/TYPE tag rules
+ * either way — this only shifts emphasis, which is what a routing
+ * decision without its own tool access can honestly change.
+ */
+export const SPECIALIST_NOTES: Record<'conversation' | 'desktop', string> = {
+  conversation:
+    'MODE: conversation. the user wants an answer, not an action. only emit a [POINT:...] or [TYPE:...] tag if they explicitly ask to be shown something or have text entered — otherwise just answer.',
+  desktop:
+    'MODE: desktop. the user wants something done or located on screen. prioritize resolving the exact on-screen target precisely and lead with the [POINT:...]/[TYPE:...] tag(s); keep spoken text minimal — the action is the point, not the explanation.',
+};
+
 export function buildSystemPrompt(
   tone: ReplyTone,
-  opts: { hasWebSearch: boolean },
+  opts: { hasWebSearch: boolean; specialist?: ActiveSpecialist },
 ): string {
   const parts = [BASE_PROMPT];
   if (opts.hasWebSearch) parts.push(WEB_SEARCH_NOTE);
+  if (opts.specialist === 'conversation' || opts.specialist === 'desktop') {
+    parts.push(SPECIALIST_NOTES[opts.specialist]);
+  }
   parts.push(TONE_STYLES[tone]);
   return parts.join('\n\n');
 }

@@ -4,6 +4,7 @@ import type {
   OpenAIModel,
   ReasoningDepth,
   ReplyTone,
+  ActiveSpecialist,
 } from '../../shared/types';
 import { getApiKey } from './key-store';
 import { buildSystemPrompt } from './prompts';
@@ -37,6 +38,8 @@ export interface OpenAIStreamCallbacks {
 export interface OpenAIChatOptions {
   reasoningDepth: ReasoningDepth;
   replyTone: ReplyTone;
+  /** Local intent-router classification for this turn — see intent-router.ts. */
+  specialist?: ActiveSpecialist;
   /** Aborting mid-stream is treated as a graceful interrupt, not an error. */
   signal?: AbortSignal;
 }
@@ -58,7 +61,7 @@ export class OpenAIAPI {
 
     // OpenAI path has no server-side web_search wired yet, so don't
     // claim the capability in the prompt.
-    const systemPrompt = buildSystemPrompt(options.replyTone, { hasWebSearch: false });
+    const systemPrompt = buildSystemPrompt(options.replyTone, { hasWebSearch: false, specialist: options.specialist });
 
     const messages: Array<{ role: string; content: unknown }> = [
       { role: 'system', content: systemPrompt },

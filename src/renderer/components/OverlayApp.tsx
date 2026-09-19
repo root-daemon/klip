@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { VoiceState, WalkthroughStep, TypeRequest, DisplayInfo } from '../../shared/types';
+import type { VoiceState, WalkthroughStep, TypeRequest, DisplayInfo, ActiveSpecialist } from '../../shared/types';
 import { Waveform } from './Waveform';
 import { KlipPet, type PetMood } from './KlipPet';
 import { AdaptiveCursor } from './AdaptiveCursor';
@@ -66,6 +66,10 @@ export function OverlayApp() {
   // that rides beside the real cursor. Separate from companionPos/dockPos,
   // which govern the pet's own (now stationary) position.
   const [adaptiveCursorPos, setAdaptiveCursorPos] = useState({ x: 0, y: 0 });
+  // Which internal specialist (see intent-router.ts) is handling the
+  // in-flight turn, if any — drives both the pet's accent color and a
+  // small label chip while processing/responding.
+  const [activeSpecialist, setActiveSpecialist] = useState<ActiveSpecialist>(null);
   const [typeToast, setTypeToast] = useState<TypeRequest | null>(null);
   const typeToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // A brief happy/concerned reaction overrides the base voice-state mood
@@ -313,6 +317,7 @@ export function OverlayApp() {
 
     const unsubs = [
       window.klip.onVoiceStateChanged(setVoiceState),
+      window.klip.onActiveSpecialistChanged(setActiveSpecialist),
       window.klip.onCursorPosition((pos) => {
         // Decides whether the clipboard/type toast and the small
         // adaptive-intelligence cursor indicator — both of which follow
@@ -461,6 +466,11 @@ export function OverlayApp() {
       }
     : { x: 0, y: 0 };
 
+  // A specialist only has a visual identity while it's actually doing
+  // something — once idle, always back to the default amber.
+  const showSpecialist = activeSpecialist && (voiceState === 'processing' || voiceState === 'responding');
+  const isDesktopSpecialist = showSpecialist && activeSpecialist === 'desktop';
+
   return (
     <div className="overlay-container">
       {showOnThisDisplay && (
@@ -480,7 +490,14 @@ export function OverlayApp() {
               transition: cursorTransition,
             }}
           >
-            <KlipPet mood={petMood} size={40} gaze={petGaze} isCursorNear={isCursorNearPet} />
+            <KlipPet
+              mood={petMood}
+              size={40}
+              gaze={petGaze}
+              isCursorNear={isCursorNearPet}
+              accentColor={isDesktopSpecialist ? 'var(--pet-glow-desktop)' : undefined}
+              accentGlowSoft={isDesktopSpecialist ? 'var(--pet-glow-desktop-soft)' : undefined}
+            />
           </div>
 
           {voiceState === 'listening' && (
@@ -489,6 +506,15 @@ export function OverlayApp() {
               style={{ left: companionPos.x + 44, top: companionPos.y + 2 }}
             >
               <Waveform state="listening" bars={10} height={22} />
+            </div>
+          )}
+
+          {showSpecialist && !showAnnotation && (
+            <div
+              className={`specialist-chip ${isDesktopSpecialist ? 'desktop' : 'conversation'}`}
+              style={{ left: companionPos.x + 44, top: companionPos.y - 6 }}
+            >
+              {isDesktopSpecialist ? '🖥 desktop' : '💬 conversation'}
             </div>
           )}
 

@@ -4,6 +4,7 @@ import type {
   GeminiModel,
   ReasoningDepth,
   ReplyTone,
+  ActiveSpecialist,
 } from '../../shared/types';
 import { getApiKey } from './key-store';
 import { buildSystemPrompt } from './prompts';
@@ -27,6 +28,8 @@ export interface GeminiStreamCallbacks {
 export interface GeminiChatOptions {
   reasoningDepth: ReasoningDepth;
   replyTone: ReplyTone;
+  /** Local intent-router classification for this turn — see intent-router.ts. */
+  specialist?: ActiveSpecialist;
   signal?: AbortSignal;
 }
 
@@ -50,7 +53,7 @@ export class GeminiAPI {
       return;
     }
 
-    const systemPrompt = buildSystemPrompt(options.replyTone, { hasWebSearch: true });
+    const systemPrompt = buildSystemPrompt(options.replyTone, { hasWebSearch: true, specialist: options.specialist });
 
     const imageParts: GeminiPart[] = [];
     screenshots.forEach((sc, i) => {

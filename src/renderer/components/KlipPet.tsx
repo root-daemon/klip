@@ -18,6 +18,12 @@ interface KlipPetProps {
   /** True when the real cursor is close by — triggers a wave hello
    *  (once per cooldown window) while idle. */
   isCursorNear?: boolean;
+  /** Overrides the default amber eye/glow color — used to give the
+   *  "desktop" specialist a visually distinct identity from
+   *  "conversation" while a turn is in flight (see intent-router.ts). */
+  accentColor?: string;
+  /** Paired with `accentColor`: the translucent ambient-glow variant. */
+  accentGlowSoft?: string;
 }
 
 const CX = 24;
@@ -59,7 +65,16 @@ function worriedArcPath(ex: number, ey: number): string {
  * heavily flattened, rotated rect reads as a wedge/horn at small
  * sizes, not an expression.
  */
-export function KlipPet({ mood, size = 44, className, style, gaze, isCursorNear }: KlipPetProps) {
+export function KlipPet({
+  mood,
+  size = 44,
+  className,
+  style,
+  gaze,
+  isCursorNear,
+  accentColor = 'var(--pet-glow)',
+  accentGlowSoft = 'var(--pet-glow-soft)',
+}: KlipPetProps) {
   const raw = useId();
   const uid = raw.replace(/[^a-zA-Z0-9]/g, '');
 
@@ -312,7 +327,7 @@ export function KlipPet({ mood, size = 44, className, style, gaze, isCursorNear 
           cx={CX}
           cy={CY}
           r={13}
-          fill="var(--pet-glow-soft)"
+          fill={accentGlowSoft}
           filter={`url(#${glowFilterId})`}
           animate={glow}
           initial={{ opacity: 0.3, scale: 1 }}
@@ -349,7 +364,7 @@ export function KlipPet({ mood, size = 44, className, style, gaze, isCursorNear 
                       width={EYE_W}
                       height={EYE_H}
                       rx={EYE_W / 2}
-                      fill="var(--pet-glow)"
+                      fill={accentColor}
                     />
                     <circle cx={leftEyeX - 1.3} cy={EYE_CY - EYE_H / 2 + 3.6} r={1.1} fill="rgba(255,255,255,0.85)" />
                   </motion.g>
@@ -365,7 +380,7 @@ export function KlipPet({ mood, size = 44, className, style, gaze, isCursorNear 
                       width={EYE_W}
                       height={EYE_H}
                       rx={EYE_W / 2}
-                      fill="var(--pet-glow)"
+                      fill={accentColor}
                     />
                     <circle cx={rightEyeX - 1.3} cy={EYE_CY - EYE_H / 2 + 3.6} r={1.1} fill="rgba(255,255,255,0.85)" />
                   </motion.g>

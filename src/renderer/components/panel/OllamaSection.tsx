@@ -9,11 +9,18 @@ interface OllamaSectionProps {
   onToggleOllama: (enabled: boolean) => void;
 }
 
+type QuickConnectState =
+  | { kind: 'idle' }
+  | { kind: 'pending' }
+  | { kind: 'ok'; model: string; modelCount: number }
+  | { kind: 'error'; message: string };
+
 export function OllamaSection({ ollamaEnabled, onToggleOllama }: OllamaSectionProps) {
   const [connections, setConnections] = useState<LocalConnection[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<LocalConnection | undefined>(undefined);
   const [managing, setManaging] = useState<LocalConnection | undefined>(undefined);
+  const [quickConnect, setQuickConnect] = useState<QuickConnectState>({ kind: 'idle' });
 
   const reload = useCallback(async () => {
     const conns = await window.klip.getLocalConnections();
@@ -21,6 +28,24 @@ export function OllamaSection({ ollamaEnabled, onToggleOllama }: OllamaSectionPr
   }, []);
 
   useEffect(() => { void reload(); }, [reload]);
+
+  const handleQuickConnect = async () => {
+    setQuickConnect({ kind: 'pending' });
+    try {
+      const res = await window.klip.quickConnectOllama();
+      if (res.ok && res.selectedModel && res.models) {
+        setQuickConnect({ kind: 'ok', model: res.selectedModel, modelCount: res.models.length });
+        await reload();
+      } else {
+        setQuickConnect({ kind: 'error', message: res.error ?? 'Could not connect to Ollama.' });
+      }
+    } catch (err) {
+      setQuickConnect({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Could not connect to Ollama.',
+      });
+    }
+  };
 
   const handleSave = async (conn: LocalConnection) => {
     setShowModal(false);
@@ -73,8 +98,36 @@ export function OllamaSection({ ollamaEnabled, onToggleOllama }: OllamaSectionPr
           />
         </div>
 
-        <div className="section-row" style={{ marginTop: 10 }}>
-          <div className="section-sub">Manage Ollama API Connections</div>
+        <div className="quick-connect">
+          <div className="quick-connect-main">
+            <div className="quick-connect-title">Ollama running on this machine?</div>
+            <div className="quick-connect-sub">
+              One click — detects it at localhost:11434, lists your installed models, and picks one.
+              No URLs or model names to type.
+            </div>
+          </div>
+          <button
+            className="btn xs primary"
+            onClick={handleQuickConnect}
+            disabled={quickConnect.kind === 'pending'}
+          >
+            {quickConnect.kind === 'pending' && <span className="spinner-sm" />}
+            {quickConnect.kind === 'pending' ? 'Connecting…' : 'Quick connect'}
+          </button>
+        </div>
+        {quickConnect.kind === 'ok' && (
+          <div className="quick-connect-status ok">
+            Connected — using <b>{quickConnect.model}</b> ({quickConnect.modelCount} model
+            {quickConnect.modelCount === 1 ? '' : 's'} found). Switch models any time from
+            &quot;Manage&quot; below.
+          </div>
+        )}
+        {quickConnect.kind === 'error' && (
+          <div className="quick-connect-status err">{quickConnect.message}</div>
+        )}
+
+        <div className="section-row" style={{ marginTop: 16 }}>
+          <div className="section-sub">Or configure manually (LM Studio, vLLM, a remote router, …)</div>
           <button
             className="btn xs add"
             onClick={() => { setEditing(undefined); setShowModal(true); }}
