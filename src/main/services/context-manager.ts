@@ -19,6 +19,7 @@ import * as settingsStore from './settings-store';
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 export const MAX_TOKEN_BUDGET = 250_000;
 export const COMPACT_TRIGGER = 200_000;
@@ -104,7 +105,7 @@ export class ContextManager {
     const recentTurns = this.turns.slice(this.turns.length - keep);
 
     const transcript = olderTurns
-      .map((t) => `${t.role === 'user' ? 'User' : 'Flicky'}: ${t.content}`)
+      .map((t) => `${t.role === 'user' ? 'User' : 'Klip'}: ${t.content}`)
       .join('\n\n');
 
     const priorSummaryBlock = this.summary
@@ -126,7 +127,7 @@ export class ContextManager {
       this.turns = recentTurns;
       this.lastCompactedAt = Date.now();
     } catch (err) {
-      console.error('[Flicky] context compact failed:', err);
+      console.error('[Klip] context compact failed:', err);
       if (force) {
         // Manual compaction: surface the error so the UI can show it.
         throw err;
@@ -145,22 +146,26 @@ export class ContextManager {
     const mindProvider = settingsStore.get('mindProvider');
     const anthropicKey = getApiKey('anthropic');
     const openaiKey = getApiKey('openai');
+    const geminiKey = getApiKey('gemini');
 
-    const preferOpenAI = mindProvider === 'openai';
-    const tryOrder: Array<'anthropic' | 'openai'> = preferOpenAI
-      ? ['openai', 'anthropic']
-      : ['anthropic', 'openai'];
+    const preferred: Array<'anthropic' | 'openai' | 'gemini'> =
+      mindProvider === 'openai' ? ['openai', 'anthropic', 'gemini']
+      : mindProvider === 'gemini' ? ['gemini', 'anthropic', 'openai']
+      : ['anthropic', 'openai', 'gemini'];
 
-    for (const provider of tryOrder) {
+    for (const provider of preferred) {
       if (provider === 'anthropic' && anthropicKey) {
         return this.summarizeViaClaude(prompt, anthropicKey);
       }
       if (provider === 'openai' && openaiKey) {
         return this.summarizeViaOpenAI(prompt, openaiKey);
       }
+      if (provider === 'gemini' && geminiKey) {
+        return this.summarizeViaGemini(prompt, geminiKey);
+      }
     }
 
-    throw new Error('No reasoning provider key configured — add Anthropic or OpenAI in the Mind tab.');
+    throw new Error('No reasoning provider key configured — add one in the Mind tab.');
   }
 
   private async summarizeViaClaude(prompt: string, apiKey: string): Promise<string> {
@@ -206,6 +211,25 @@ export class ContextManager {
     }
     const data = await response.json();
     const text = data?.choices?.[0]?.message?.content;
+    if (!text || typeof text !== 'string') throw new Error('no summary text');
+    return text;
+  }
+
+  private async summarizeViaGemini(prompt: string, apiKey: string): Promise<string> {
+    const model = settingsStore.get('selectedGeminiModel');
+    const response = await fetch(`${GEMINI_API_BASE}/${model}:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 1024 },
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`compact (gemini) ${response.status}: ${await response.text()}`);
+    }
+    const data = await response.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text || typeof text !== 'string') throw new Error('no summary text');
     return text;
   }

@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import type { FlickySettings, MemoryStats } from '../../../shared/types';
+import type { KlipSettings, MemoryStats } from '../../../shared/types';
 import { ShortcutCapture } from './ShortcutCapture';
 
 interface GeneralTabProps {
-  settings: FlickySettings;
+  settings: KlipSettings;
   memory: MemoryStats | null;
 }
 
@@ -35,7 +35,7 @@ export function GeneralTab({ settings, memory }: GeneralTabProps) {
     setIsCompacting(true);
     setCompactStatus(null);
     try {
-      const res = await window.flicky.compactContext();
+      const res = await window.klip.compactContext();
       if (res.ok) {
         setCompactStatus({ kind: 'success', message: 'Compacted.' });
       } else {
@@ -60,7 +60,7 @@ export function GeneralTab({ settings, memory }: GeneralTabProps) {
     pct < 60 ? 'var(--fl-ok)' : pct < 85 ? 'var(--fl-warn)' : 'var(--fl-danger)';
 
   const shortcutKeys = settings.pushToTalkShortcut.split('+').filter(Boolean);
-  const isMac = window.flicky.platform === 'darwin';
+  const isMac = window.klip.platform === 'darwin';
 
   return (
     <>
@@ -83,7 +83,7 @@ export function GeneralTab({ settings, memory }: GeneralTabProps) {
           {editingShortcut ? (
             <ShortcutCapture
               onSave={(accel) => {
-                window.flicky.setPushToTalkShortcut(accel);
+                window.klip.setPushToTalkShortcut(accel);
                 setEditingShortcut(false);
               }}
               onCancel={() => setEditingShortcut(false)}
@@ -115,7 +115,7 @@ export function GeneralTab({ settings, memory }: GeneralTabProps) {
               className={`seg ${settings.pttMode === 'hold' ? 'on' : ''}`}
               disabled={isMac}
               title={isMac ? 'Not supported on macOS' : ''}
-              onClick={() => window.flicky.setPttMode('hold')}
+              onClick={() => window.klip.setPttMode('hold')}
             >
               Hold
             </button>
@@ -123,7 +123,7 @@ export function GeneralTab({ settings, memory }: GeneralTabProps) {
               role="tab"
               aria-selected={settings.pttMode === 'toggle'}
               className={`seg ${settings.pttMode === 'toggle' ? 'on' : ''}`}
-              onClick={() => window.flicky.setPttMode('toggle')}
+              onClick={() => window.klip.setPttMode('toggle')}
             >
               Toggle
             </button>
@@ -134,7 +134,7 @@ export function GeneralTab({ settings, memory }: GeneralTabProps) {
       <div className="section">
         <div className="section-title">Memory</div>
         <p className="section-hint" style={{ margin: '6px 0 14px' }}>
-          Flicky auto-compacts older messages into a summary near the {formatTokens(budget)} cap so the
+          KLIP auto-compacts older messages into a summary near the {formatTokens(budget)} cap so the
           conversation can run forever.
         </p>
         <div className="context-bar">
@@ -160,7 +160,7 @@ export function GeneralTab({ settings, memory }: GeneralTabProps) {
           </button>
           <button
             className="btn xs subtle"
-            onClick={() => window.flicky.clearContext()}
+            onClick={() => window.klip.clearContext()}
             disabled={isCompacting}
           >
             Clear memory
@@ -181,37 +181,37 @@ export function GeneralTab({ settings, memory }: GeneralTabProps) {
         <div className="row">
           <div className="row-main">
             <div className="row-t">Show cursor</div>
-            <div className="row-s">blue pointer that flies to things Flicky mentions</div>
+            <div className="row-s">blue pointer that flies to things KLIP mentions</div>
           </div>
           <button
             className={`toggle ${settings.isClickyCursorEnabled ? 'on' : ''}`}
-            onClick={() => window.flicky.toggleCursor(!settings.isClickyCursorEnabled)}
+            onClick={() => window.klip.toggleCursor(!settings.isClickyCursorEnabled)}
             aria-label="Toggle cursor"
           />
         </div>
         <div className="row">
           <div className="row-main">
-            <div className="row-t">Allow Flicky to type for you</div>
+            <div className="row-t">Allow KLIP to type for you</div>
             <div className="row-s">
-              when off (default), Flicky copies text to your clipboard and you press paste.
-              when on, Flicky types directly into the focused field
+              when off (default), KLIP copies text to your clipboard and you press paste.
+              when on, KLIP types directly into the focused field
               {isMac && <> — requires <strong>Accessibility</strong> permission on macOS</>}.
             </div>
           </div>
           <button
             className={`toggle ${settings.autoTypeEnabled ? 'on' : ''}`}
-            onClick={() => window.flicky.setAutoTypeEnabled(!settings.autoTypeEnabled)}
+            onClick={() => window.klip.setAutoTypeEnabled(!settings.autoTypeEnabled)}
             aria-label="Toggle auto-typing"
           />
         </div>
         <div className="row">
           <div className="row-main">
             <div className="row-t">Launch at login</div>
-            <div className="row-s">open Flicky when you sign in</div>
+            <div className="row-s">open KLIP when you sign in</div>
           </div>
           <button
             className={`toggle ${settings.launchAtLogin ? 'on' : ''}`}
-            onClick={() => window.flicky.setLaunchAtLogin(!settings.launchAtLogin)}
+            onClick={() => window.klip.setLaunchAtLogin(!settings.launchAtLogin)}
             aria-label="Toggle launch at login"
           />
         </div>
@@ -220,7 +220,7 @@ export function GeneralTab({ settings, memory }: GeneralTabProps) {
             <div className="row-t">Setup</div>
             <div className="row-s">re-check permissions, keys, the shortcut and your mic step by step</div>
           </div>
-          <button className="btn xs" onClick={() => window.flicky.replayOnboarding()}>
+          <button className="btn xs" onClick={() => window.klip.replayOnboarding()}>
             Run setup again
           </button>
         </div>
@@ -234,7 +234,7 @@ export function GeneralTab({ settings, memory }: GeneralTabProps) {
               <button
                 key={v}
                 className={settings.streamVisibility === v ? 'on' : ''}
-                onClick={() => window.flicky.setStreamVisibility(v)}
+                onClick={() => window.klip.setStreamVisibility(v)}
               >
                 {v === 'responses' ? 'while replying' : v}
               </button>

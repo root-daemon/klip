@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import type {
   ApiKeyName,
-  FlickySettings,
+  KlipSettings,
   MindProvider,
+  TtsProvider,
+  TranscriptionProviderType,
   PermissionStatus,
   VoiceState,
 } from '../../../shared/types';
 import { CursorIcon } from '../CursorIcon';
+import { KlipPet } from '../KlipPet';
 import { KeyEntry } from './KeyEntry';
 import { ShortcutCapture } from './ShortcutCapture';
 
@@ -15,7 +19,7 @@ import { ShortcutCapture } from './ShortcutCapture';
  * is round-tripped against its provider, the shortcut has to actually
  * fire, the mic has to actually produce level, and the final step runs
  * a real end-to-end turn — so a user who reaches "Done" has a working
- * Flicky, not just a filled-in form.
+ * KLIP, not just a filled-in form.
  */
 
 type StepId =
@@ -34,7 +38,7 @@ interface StepMeta {
   title: string;
 }
 
-const platform = window.flicky.platform;
+const platform = window.klip.platform;
 const isMac = platform === 'darwin';
 const isWin = platform === 'win32';
 
@@ -54,22 +58,35 @@ const ALL_STEPS: StepMeta[] = [
 const STEPS = ALL_STEPS.filter((s) => s.id !== 'permissions' || isMac || isWin);
 
 interface OnboardingProps {
-  settings: FlickySettings;
+  settings: KlipSettings;
   voiceState: VoiceState;
 }
 
+const STEP_VARIANTS = {
+  enter: (dir: number) => ({ opacity: 0, x: dir > 0 ? 28 : -28, scale: 0.99 }),
+  center: { opacity: 1, x: 0, scale: 1 },
+  exit: (dir: number) => ({ opacity: 0, x: dir > 0 ? -28 : 28, scale: 0.99 }),
+};
+
 export function Onboarding({ settings, voiceState }: OnboardingProps) {
   const [index, setIndex] = useState(0);
+  const [direction, setDirection] = useState(1);
   const step = STEPS[index];
-  const next = useCallback(() => setIndex((i) => Math.min(STEPS.length - 1, i + 1)), []);
-  const back = useCallback(() => setIndex((i) => Math.max(0, i - 1)), []);
+  const next = useCallback(() => {
+    setDirection(1);
+    setIndex((i) => Math.min(STEPS.length - 1, i + 1));
+  }, []);
+  const back = useCallback(() => {
+    setDirection(-1);
+    setIndex((i) => Math.max(0, i - 1));
+  }, []);
 
   return (
     <div className="ob">
       <aside className="ob-rail">
         <div className="ob-brand">
           <CursorIcon size={28} />
-          <span>Flicky setup</span>
+          <span>KLIP setup</span>
         </div>
         <ol className="ob-rail-steps">
           {STEPS.map((s, i) => (
@@ -77,33 +94,52 @@ export function Onboarding({ settings, voiceState }: OnboardingProps) {
               key={s.id}
               className={`ob-rail-step ${i === index ? 'on' : ''} ${i < index ? 'done' : ''}`}
             >
-              <span className="ob-rail-dot">{i < index ? '✓' : i + 1}</span>
+              <motion.span
+                className="ob-rail-dot"
+                animate={i === index ? { scale: [1, 1.18, 1] } : { scale: 1 }}
+                transition={{ duration: 0.4, ease: 'easeOut' }}
+              >
+                {i < index ? '✓' : i + 1}
+              </motion.span>
               <span>{s.title}</span>
             </li>
           ))}
         </ol>
         <button
           className="ob-skip"
-          onClick={() => window.flicky.completeOnboarding()}
+          onClick={() => window.klip.completeOnboarding()}
           title="You can rerun setup any time from General."
         >
           Skip setup
         </button>
       </aside>
 
-      <main className="ob-main" key={step.id}>
-        {step.id === 'welcome' && <WelcomeStep onNext={next} />}
-        {step.id === 'permissions' && <PermissionsStep onNext={next} onBack={back} />}
-        {step.id === 'mind' && <MindStep settings={settings} onNext={next} onBack={back} />}
-        {step.id === 'ear' && <EarStep settings={settings} onNext={next} onBack={back} />}
-        {step.id === 'voice' && <VoiceStep settings={settings} onNext={next} onBack={back} />}
-        {step.id === 'shortcut' && <ShortcutStep settings={settings} onNext={next} onBack={back} />}
-        {step.id === 'mic' && <MicStep onNext={next} onBack={back} />}
-        {step.id === 'try' && (
-          <TryStep settings={settings} voiceState={voiceState} onNext={next} onBack={back} />
-        )}
-        {step.id === 'done' && <DoneStep settings={settings} onBack={back} />}
-      </main>
+      <div className="ob-main-viewport">
+        <AnimatePresence mode="wait" custom={direction} initial={false}>
+          <motion.main
+            className="ob-main"
+            key={step.id}
+            custom={direction}
+            variants={STEP_VARIANTS}
+            initial="enter"
+            animate="center"
+            exit="exit"
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {step.id === 'welcome' && <WelcomeStep onNext={next} />}
+            {step.id === 'permissions' && <PermissionsStep onNext={next} onBack={back} />}
+            {step.id === 'mind' && <MindStep settings={settings} onNext={next} onBack={back} />}
+            {step.id === 'ear' && <EarStep settings={settings} onNext={next} onBack={back} />}
+            {step.id === 'voice' && <VoiceStep settings={settings} onNext={next} onBack={back} />}
+            {step.id === 'shortcut' && <ShortcutStep settings={settings} onNext={next} onBack={back} />}
+            {step.id === 'mic' && <MicStep onNext={next} onBack={back} />}
+            {step.id === 'try' && (
+              <TryStep settings={settings} voiceState={voiceState} onNext={next} onBack={back} />
+            )}
+            {step.id === 'done' && <DoneStep settings={settings} onBack={back} />}
+          </motion.main>
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
@@ -177,7 +213,7 @@ function SavedKey({ name, label, onReplace, extra }: {
   const [state, setState] = useState<{ kind: 'wait' } | { kind: 'ok' } | { kind: 'err'; error: string }>({ kind: 'wait' });
   const run = useCallback(async () => {
     setState({ kind: 'wait' });
-    const res = await window.flicky.validateStoredApiKey(name);
+    const res = await window.klip.validateStoredApiKey(name);
     setState(res.ok ? { kind: 'ok' } : { kind: 'err', error: res.error ?? 'Validation failed.' });
   }, [name]);
   useEffect(() => { void run(); }, [run]);
@@ -203,10 +239,10 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
   return (
     <>
       <div className="ob-hero-icon"><CursorIcon size={64} /></div>
-      <h1 className="ob-h1">Hi, I&apos;m Flicky<em>.</em></h1>
+      <h1 className="ob-h1">Hi, I&apos;m KLIP<em>.</em></h1>
       <p className="ob-lead">
-        A voice assistant that can see your screen. Hold a shortcut, ask a question, and a
-        little blue cursor flies over to point at whatever I&apos;m talking about.
+        A voice assistant that can see your screen. Hold a shortcut, ask a question, and I&apos;ll
+        glide over to point at whatever I&apos;m talking about.
       </p>
       <ul className="ob-bullets">
         <li>
@@ -243,7 +279,7 @@ function PermissionsStep({ onNext, onBack }: { onNext: () => void; onBack: () =>
   // takes without them having to click anything here.
   useEffect(() => {
     let alive = true;
-    const tick = () => window.flicky.getPermissions().then((p) => { if (alive) setPerms(p); });
+    const tick = () => window.klip.getPermissions().then((p) => { if (alive) setPerms(p); });
     void tick();
     const t = setInterval(tick, 1500);
     return () => { alive = false; clearInterval(t); };
@@ -259,7 +295,7 @@ function PermissionsStep({ onNext, onBack }: { onNext: () => void; onBack: () =>
       <h1 className="ob-h1">Let me hear and see<em>.</em></h1>
       <p className="ob-lead">
         {isWin
-          ? 'Windows blocks desktop apps from the microphone until you allow it. Flicky can\'t hear you otherwise — this is the most common reason it seems to do nothing.'
+          ? 'Windows blocks desktop apps from the microphone until you allow it. KLIP can\'t hear you otherwise — this is the most common reason it seems to do nothing.'
           : 'macOS asks per app. Grant these once and you\'re set.'}
       </p>
 
@@ -270,7 +306,7 @@ function PermissionsStep({ onNext, onBack }: { onNext: () => void; onBack: () =>
             <div className="ob-perm-sub">
               {isWin
                 ? 'Settings → Privacy & security → Microphone → turn on “Microphone access” and “Let desktop apps access your microphone”.'
-                : 'System Settings → Privacy & Security → Microphone → enable Flicky.'}
+                : 'System Settings → Privacy & Security → Microphone → enable KLIP.'}
             </div>
           </div>
           <div className="ob-perm-right">
@@ -282,7 +318,7 @@ function PermissionsStep({ onNext, onBack }: { onNext: () => void; onBack: () =>
               <Status kind={micBlocked ? 'err' : 'warn'}>{micBlocked ? 'blocked' : 'not granted'}</Status>
             )}
             {!micOk && (
-              <button className="btn xs" onClick={() => window.flicky.requestPermission('microphone')}>
+              <button className="btn xs" onClick={() => window.klip.requestPermission('microphone')}>
                 {isWin ? 'Open Windows settings' : 'Grant'}
               </button>
             )}
@@ -294,7 +330,7 @@ function PermissionsStep({ onNext, onBack }: { onNext: () => void; onBack: () =>
             <div>
               <div className="ob-perm-title">Screen Recording</div>
               <div className="ob-perm-sub">
-                So Flicky can take the screenshot that goes with each question. macOS
+                So KLIP can take the screenshot that goes with each question. macOS
                 requires a quit &amp; reopen after granting this one.
               </div>
             </div>
@@ -307,7 +343,7 @@ function PermissionsStep({ onNext, onBack }: { onNext: () => void; onBack: () =>
                 <Status kind="warn">not granted</Status>
               )}
               {!screenOk && (
-                <button className="btn xs" onClick={() => window.flicky.requestPermission('screen')}>
+                <button className="btn xs" onClick={() => window.klip.requestPermission('screen')}>
                   Grant
                 </button>
               )}
@@ -338,19 +374,27 @@ function PermissionsStep({ onNext, onBack }: { onNext: () => void; onBack: () =>
 
 // ── 3. Mind ────────────────────────────────────────────────────────────
 
-const PROVIDERS: Array<{ id: MindProvider; label: string; sub: string; logo: string; cls: string }> = [
+const MIND_PROVIDERS: Array<{ id: MindProvider; label: string; sub: string; logo: string; cls: string }> = [
   { id: 'anthropic', label: 'Anthropic', sub: 'Claude Sonnet / Opus · built-in web search', logo: 'A', cls: '' },
   { id: 'openai', label: 'OpenAI', sub: 'GPT-5 · GPT-4o', logo: 'Ai', cls: 'openai' },
+  { id: 'gemini', label: 'Gemini', sub: 'Gemini 2.5 Pro / Flash · Google Search grounding', logo: 'G', cls: 'gemini' },
   { id: 'ollama', label: 'Local', sub: 'Ollama · LM Studio · any OpenAI-compatible endpoint', logo: '⬡', cls: 'local' },
 ];
 
-function MindStep({ settings, onNext, onBack }: { settings: FlickySettings; onNext: () => void; onBack: () => void }) {
+const MIND_KEY_INFO: Record<'anthropic' | 'openai' | 'gemini', { label: string; url: string; site: string; placeholder: string }> = {
+  anthropic: { label: 'Anthropic', url: 'https://console.anthropic.com/settings/keys', site: 'console.anthropic.com', placeholder: 'sk-ant-...' },
+  openai: { label: 'OpenAI', url: 'https://platform.openai.com/api-keys', site: 'platform.openai.com', placeholder: 'sk-...' },
+  gemini: { label: 'Gemini', url: 'https://aistudio.google.com/apikey', site: 'aistudio.google.com', placeholder: 'AIza...' },
+};
+
+function MindStep({ settings, onNext, onBack }: { settings: KlipSettings; onNext: () => void; onBack: () => void }) {
   const provider = settings.mindProvider;
-  const keyName = provider === 'openai' ? 'openai' : 'anthropic';
-  const hasKey = provider === 'openai' ? settings.apiKeyStatus.openai : settings.apiKeyStatus.anthropic;
   const hasLocal = (settings.localConnections ?? []).some((c) => c.enabled);
+  const keyName = provider === 'ollama' ? null : (provider as 'anthropic' | 'openai' | 'gemini');
+  const hasKey = keyName ? settings.apiKeyStatus[keyName] : false;
   const ready = provider === 'ollama' ? true : hasKey;
   const [replacing, setReplacing] = useState(false);
+  const info = keyName ? MIND_KEY_INFO[keyName] : null;
 
   return (
     <>
@@ -361,11 +405,11 @@ function MindStep({ settings, onNext, onBack }: { settings: FlickySettings; onNe
       </p>
 
       <div className="ob-choice">
-        {PROVIDERS.map((p) => (
+        {MIND_PROVIDERS.map((p) => (
           <button
             key={p.id}
             className={`ob-choice-item ${provider === p.id ? 'on' : ''}`}
-            onClick={() => window.flicky.setMindProvider(p.id)}
+            onClick={() => window.klip.setMindProvider(p.id)}
           >
             <div className={`provider-logo ${p.cls}`}>{p.logo}</div>
             <div>
@@ -386,34 +430,29 @@ function MindStep({ settings, onNext, onBack }: { settings: FlickySettings; onNe
                 : 'No local connection yet. Finish setup, then add one under Mind → Local (URL, optional bearer token, and the model to use). Until then, questions will fail with “no enabled local connection”.'}
             </p>
           </>
-        ) : hasKey && !replacing ? (
+        ) : keyName && info && hasKey && !replacing ? (
           <SavedKey
             name={keyName}
-            label={`${provider === 'openai' ? 'OpenAI' : 'Anthropic'} key`}
+            label={`${info.label} key`}
             onReplace={() => setReplacing(true)}
           />
-        ) : (
+        ) : keyName && info ? (
           <>
-            <div className="ob-card-title">{provider === 'openai' ? 'OpenAI' : 'Anthropic'} API key</div>
+            <div className="ob-card-title">{info.label} API key</div>
             <p className="ob-card-text">
               Get one from{' '}
-              <button
-                className="link"
-                onClick={() => window.flicky.openExternal(
-                  provider === 'openai' ? 'https://platform.openai.com/api-keys' : 'https://console.anthropic.com/settings/keys',
-                )}
-              >
-                {provider === 'openai' ? 'platform.openai.com' : 'console.anthropic.com'} →
+              <button className="link" onClick={() => window.klip.openExternal(info.url)}>
+                {info.site} →
               </button>
             </p>
             <KeyEntry
               name={keyName}
-              placeholder={provider === 'openai' ? 'sk-...' : 'sk-ant-...'}
+              placeholder={info.placeholder}
               onSaved={() => setReplacing(false)}
               onCancel={hasKey ? () => setReplacing(false) : undefined}
             />
           </>
-        )}
+        ) : null}
       </div>
 
       <Footer
@@ -428,31 +467,63 @@ function MindStep({ settings, onNext, onBack }: { settings: FlickySettings; onNe
 
 // ── 4. Ear ─────────────────────────────────────────────────────────────
 
-function EarStep({ settings, onNext, onBack }: { settings: FlickySettings; onNext: () => void; onBack: () => void }) {
-  const hasKey = settings.apiKeyStatus.groq;
+const EAR_PROVIDERS: Array<{ id: TranscriptionProviderType; label: string; sub: string; logo: string; cls: string }> = [
+  { id: 'groq', label: 'Groq', sub: 'Whisper Large v3 · very fast · English-tuned', logo: 'G', cls: 'groq' },
+  { id: 'sarvam', label: 'Sarvam AI', sub: 'Saarika v2.5 · Indian-language & code-switched speech', logo: 'S', cls: 'sarvam' },
+];
+
+function EarStep({ settings, onNext, onBack }: { settings: KlipSettings; onNext: () => void; onBack: () => void }) {
+  const provider: 'groq' | 'sarvam' = settings.transcriptionProvider === 'sarvam' ? 'sarvam' : 'groq';
+  const hasKey = provider === 'sarvam' ? settings.apiKeyStatus.sarvam : settings.apiKeyStatus.groq;
   const [replacing, setReplacing] = useState(false);
   return (
     <>
       <h1 className="ob-h1">Give me ears<em>.</em></h1>
       <p className="ob-lead">
-        Your voice is transcribed by Groq&apos;s Whisper — it&apos;s fast, accurate, and has a
-        generous free tier.
+        Your voice gets transcribed before I can act on it. Pick whichever provider fits your
+        languages best.
       </p>
+
+      <div className="ob-choice">
+        {EAR_PROVIDERS.map((p) => (
+          <button
+            key={p.id}
+            className={`ob-choice-item ${provider === p.id ? 'on' : ''}`}
+            onClick={() => window.klip.setTranscriptionProvider(p.id)}
+          >
+            <div className={`provider-logo ${p.cls}`}>{p.logo}</div>
+            <div>
+              <div className="ob-choice-title">{p.label}</div>
+              <div className="ob-choice-sub">{p.sub}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+
       <div className="ob-card">
         {hasKey && !replacing ? (
-          <SavedKey name="groq" label="Groq key" onReplace={() => setReplacing(true)} />
+          <SavedKey
+            name={provider}
+            label={`${provider === 'sarvam' ? 'Sarvam AI' : 'Groq'} key`}
+            onReplace={() => setReplacing(true)}
+          />
         ) : (
           <>
-            <div className="ob-card-title">Groq API key</div>
+            <div className="ob-card-title">{provider === 'sarvam' ? 'Sarvam AI' : 'Groq'} API key</div>
             <p className="ob-card-text">
               Get one from{' '}
-              <button className="link" onClick={() => window.flicky.openExternal('https://console.groq.com/keys')}>
-                console.groq.com →
+              <button
+                className="link"
+                onClick={() => window.klip.openExternal(
+                  provider === 'sarvam' ? 'https://dashboard.sarvam.ai/admin/subscription' : 'https://console.groq.com/keys',
+                )}
+              >
+                {provider === 'sarvam' ? 'dashboard.sarvam.ai' : 'console.groq.com'} →
               </button>
             </p>
             <KeyEntry
-              name="groq"
-              placeholder="gsk_..."
+              name={provider}
+              placeholder={provider === 'sarvam' ? 'sk_...' : 'gsk_...'}
               onSaved={() => setReplacing(false)}
               onCancel={hasKey ? () => setReplacing(false) : undefined}
             />
@@ -471,45 +542,80 @@ function EarStep({ settings, onNext, onBack }: { settings: FlickySettings; onNex
 
 // ── 5. Voice ───────────────────────────────────────────────────────────
 
-function VoiceStep({ settings, onNext, onBack }: { settings: FlickySettings; onNext: () => void; onBack: () => void }) {
-  const hasKey = settings.apiKeyStatus.elevenlabs;
+const VOICE_PROVIDERS: Array<{ id: TtsProvider; label: string; sub: string; logo: string; cls: string }> = [
+  { id: 'elevenlabs', label: 'ElevenLabs', sub: 'Large curated voice catalog', logo: '11', cls: 'eleven' },
+  { id: 'sarvam', label: 'Sarvam AI', sub: 'Bulbul v2 · multilingual speakers', logo: 'S', cls: 'sarvam' },
+];
+
+function VoiceStep({ settings, onNext, onBack }: { settings: KlipSettings; onNext: () => void; onBack: () => void }) {
+  const provider = settings.ttsProvider;
+  const hasKey = provider === 'sarvam' ? settings.apiKeyStatus.sarvam : settings.apiKeyStatus.elevenlabs;
   const [replacing, setReplacing] = useState(false);
   const skip = () => {
-    window.flicky.setSpeakReplies(false);
+    window.klip.setSpeakReplies(false);
     onNext();
   };
   return (
     <>
       <h1 className="ob-h1">Give me a voice<em>.</em></h1>
       <p className="ob-lead">
-        Optional. With an ElevenLabs key I&apos;ll speak my answers out loud. Without one,
-        replies show up as text in the panel and the stream window.
+        Optional. With a voice key I&apos;ll speak my answers out loud. Without one, replies
+        show up as text in the panel and the stream window.
       </p>
+
+      <div className="ob-choice">
+        {VOICE_PROVIDERS.map((p) => (
+          <button
+            key={p.id}
+            className={`ob-choice-item ${provider === p.id ? 'on' : ''}`}
+            onClick={() => window.klip.setTtsProvider(p.id)}
+          >
+            <div className={`provider-logo ${p.cls}`}>{p.logo}</div>
+            <div>
+              <div className="ob-choice-title">{p.label}</div>
+              <div className="ob-choice-sub">{p.sub}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+
       <div className="ob-card">
         {hasKey && !replacing ? (
           <SavedKey
-            name="elevenlabs"
-            label="ElevenLabs key"
+            name={provider}
+            label={`${provider === 'sarvam' ? 'Sarvam AI' : 'ElevenLabs'} key`}
             onReplace={() => setReplacing(true)}
             extra={
-              <button className="btn xs" onClick={() => window.flicky.playVoicePreview(settings.voiceId)}>
+              <button
+                className="btn xs"
+                onClick={() =>
+                  provider === 'sarvam'
+                    ? window.klip.playSarvamVoicePreview(settings.sarvamSpeaker)
+                    : window.klip.playVoicePreview(settings.voiceId)
+                }
+              >
                 ▶ Preview voice
               </button>
             }
           />
         ) : (
           <>
-            <div className="ob-card-title">ElevenLabs API key</div>
+            <div className="ob-card-title">{provider === 'sarvam' ? 'Sarvam AI' : 'ElevenLabs'} API key</div>
             <p className="ob-card-text">
               Get one from{' '}
-              <button className="link" onClick={() => window.flicky.openExternal('https://elevenlabs.io/app/settings/api-keys')}>
-                elevenlabs.io →
+              <button
+                className="link"
+                onClick={() => window.klip.openExternal(
+                  provider === 'sarvam' ? 'https://dashboard.sarvam.ai/admin/subscription' : 'https://elevenlabs.io/app/settings/api-keys',
+                )}
+              >
+                {provider === 'sarvam' ? 'dashboard.sarvam.ai' : 'elevenlabs.io'} →
               </button>
             </p>
             <KeyEntry
-              name="elevenlabs"
-              placeholder="xi-..."
-              onSaved={() => { window.flicky.setSpeakReplies(true); setReplacing(false); }}
+              name={provider}
+              placeholder={provider === 'sarvam' ? 'sk_...' : 'xi-...'}
+              onSaved={() => { window.klip.setSpeakReplies(true); setReplacing(false); }}
               onCancel={hasKey ? () => setReplacing(false) : undefined}
             />
           </>
@@ -530,7 +636,7 @@ function VoiceStep({ settings, onNext, onBack }: { settings: FlickySettings; onN
 
 // ── 6. Shortcut ────────────────────────────────────────────────────────
 
-function ShortcutStep({ settings, onNext, onBack }: { settings: FlickySettings; onNext: () => void; onBack: () => void }) {
+function ShortcutStep({ settings, onNext, onBack }: { settings: KlipSettings; onNext: () => void; onBack: () => void }) {
   const [editing, setEditing] = useState(false);
   const [fired, setFired] = useState(false);
   const [flash, setFlash] = useState(false);
@@ -541,13 +647,13 @@ function ShortcutStep({ settings, onNext, onBack }: { settings: FlickySettings; 
   // While on this step the accelerator only reports itself — it doesn't
   // open the mic — so the user can mash it freely.
   useEffect(() => {
-    window.flicky.startPttTest();
-    return () => window.flicky.stopPttTest();
+    window.klip.startPttTest();
+    return () => window.klip.stopPttTest();
   }, []);
 
   useEffect(() => {
     let flashTimer: ReturnType<typeof setTimeout> | null = null;
-    const unsub = window.flicky.onPttShortcutFired(() => {
+    const unsub = window.klip.onPttShortcutFired(() => {
       setFired(true);
       setFlash(true);
       if (flashTimer) clearTimeout(flashTimer);
@@ -572,7 +678,7 @@ function ShortcutStep({ settings, onNext, onBack }: { settings: FlickySettings; 
   const onSave = (accel: string) => {
     pendingRef.current = accel;
     setEditing(false);
-    window.flicky.setPushToTalkShortcut(accel);
+    window.klip.setPushToTalkShortcut(accel);
     // Settings echo back synchronously-ish; if they haven't changed
     // shortly after, the register call failed.
     setTimeout(() => {
@@ -621,8 +727,8 @@ function ShortcutStep({ settings, onNext, onBack }: { settings: FlickySettings; 
         </p>
         {!isMac && (
           <div className="seg" style={{ maxWidth: 280 }}>
-            <button className={settings.pttMode === 'hold' ? 'on' : ''} onClick={() => window.flicky.setPttMode('hold')}>Hold</button>
-            <button className={settings.pttMode === 'toggle' ? 'on' : ''} onClick={() => window.flicky.setPttMode('toggle')}>Toggle</button>
+            <button className={settings.pttMode === 'hold' ? 'on' : ''} onClick={() => window.klip.setPttMode('hold')}>Hold</button>
+            <button className={settings.pttMode === 'toggle' ? 'on' : ''} onClick={() => window.klip.setPttMode('toggle')}>Toggle</button>
           </div>
         )}
       </div>
@@ -649,15 +755,15 @@ function MicStep({ onNext, onBack }: { onNext: () => void; onBack: () => void })
   const decayRef = useRef<number | null>(null);
 
   useEffect(() => {
-    window.flicky.startMicTest();
-    const unsubLevel = window.flicky.onMicLevel((l) => {
+    window.klip.startMicTest();
+    const unsubLevel = window.klip.onMicLevel((l) => {
       setLevel(l);
       setPeak((p) => Math.max(p, l));
       // ~RMS 0.05: clearly above room noise, easily hit by normal speech.
       if (l > 0.2) setHeard(true);
       setError(null);
     });
-    const unsubErr = window.flicky.onMicError((m) => setError(m));
+    const unsubErr = window.klip.onMicError((m) => setError(m));
     // Smooth fall-off so the meter doesn't stutter between reports.
     const decay = () => {
       setLevel((l) => (l > 0.01 ? l * 0.85 : 0));
@@ -665,7 +771,7 @@ function MicStep({ onNext, onBack }: { onNext: () => void; onBack: () => void })
     };
     decayRef.current = requestAnimationFrame(decay);
     return () => {
-      window.flicky.stopMicTest();
+      window.klip.stopMicTest();
       unsubLevel();
       unsubErr();
       if (decayRef.current) cancelAnimationFrame(decayRef.current);
@@ -699,22 +805,22 @@ function MicStep({ onNext, onBack }: { onNext: () => void; onBack: () => void })
           ) : peak > 0 ? (
             <Status kind="warn">receiving audio but it&apos;s very quiet — move closer or raise your input volume</Status>
           ) : (
-            <Status kind="wait">listening… say &ldquo;hi Flicky&rdquo;</Status>
+            <Status kind="wait">listening… say &ldquo;hi KLIP&rdquo;</Status>
           )}
         </div>
         {error && isWin && (
           <div className="actions">
-            <button className="btn xs" onClick={() => window.flicky.requestPermission('microphone')}>
+            <button className="btn xs" onClick={() => window.klip.requestPermission('microphone')}>
               Open Windows microphone settings
             </button>
-            <button className="btn xs subtle" onClick={() => { window.flicky.stopMicTest(); setTimeout(() => window.flicky.startMicTest(), 100); setError(null); }}>
+            <button className="btn xs subtle" onClick={() => { window.klip.stopMicTest(); setTimeout(() => window.klip.startMicTest(), 100); setError(null); }}>
               Retry
             </button>
           </div>
         )}
         {error && isMac && (
           <div className="actions">
-            <button className="btn xs" onClick={() => window.flicky.requestPermission('microphone')}>
+            <button className="btn xs" onClick={() => window.klip.requestPermission('microphone')}>
               Open System Settings
             </button>
           </div>
@@ -735,7 +841,7 @@ function MicStep({ onNext, onBack }: { onNext: () => void; onBack: () => void })
 // ── 8. Try it ──────────────────────────────────────────────────────────
 
 function TryStep({ settings, voiceState, onNext, onBack }: {
-  settings: FlickySettings; voiceState: VoiceState; onNext: () => void; onBack: () => void;
+  settings: KlipSettings; voiceState: VoiceState; onNext: () => void; onBack: () => void;
 }) {
   const [transcript, setTranscript] = useState('');
   const [reply, setReply] = useState('');
@@ -744,10 +850,10 @@ function TryStep({ settings, voiceState, onNext, onBack }: {
 
   useEffect(() => {
     const unsubs = [
-      window.flicky.onTranscriptUpdate((r) => { setTranscript(r.text); setError(null); }),
-      window.flicky.onAiResponseChunk((c) => setReply((r) => r + c)),
-      window.flicky.onAiResponseComplete((t) => { setReply(t); setCompleted(true); }),
-      window.flicky.onAiError((m) => setError(m)),
+      window.klip.onTranscriptUpdate((r) => { setTranscript(r.text); setError(null); }),
+      window.klip.onAiResponseChunk((c) => setReply((r) => r + c)),
+      window.klip.onAiResponseComplete((t) => { setReply(t); setCompleted(true); }),
+      window.klip.onAiError((m) => setError(m)),
     ];
     return () => unsubs.forEach((u) => u());
   }, []);
@@ -776,7 +882,7 @@ function TryStep({ settings, voiceState, onNext, onBack }: {
       <h1 className="ob-h1">Ask me something<em>.</em></h1>
       <p className="ob-lead">
         A real turn, end to end. {verb} <Keys shortcut={settings.pushToTalkShortcut} /> and say
-        something like <i>&ldquo;Hi Flicky, what am I looking at?&rdquo;</i>
+        something like <i>&ldquo;Hi KLIP, what am I looking at?&rdquo;</i>
         {verb === 'Hold' ? ' — then let go.' : ' — then tap again.'}
       </p>
 
@@ -789,7 +895,7 @@ function TryStep({ settings, voiceState, onNext, onBack }: {
           <div className={`ob-try-text ${transcript ? '' : 'empty'}`}>{transcript || '—'}</div>
         </div>
         <div className="ob-try-row">
-          <div className="ob-try-label">Flicky</div>
+          <div className="ob-try-label">KLIP</div>
           <div className={`ob-try-text ${reply ? '' : 'empty'}`}>{reply || '—'}</div>
         </div>
         {error && <Status kind="err">{error}</Status>}
@@ -809,14 +915,18 @@ function TryStep({ settings, voiceState, onNext, onBack }: {
 
 // ── 9. Done ────────────────────────────────────────────────────────────
 
-function DoneStep({ settings, onBack }: { settings: FlickySettings; onBack: () => void }) {
-  const mind = settings.mindProvider === 'openai' ? 'OpenAI' : settings.mindProvider === 'ollama' ? 'Local model' : 'Anthropic';
+function DoneStep({ settings, onBack }: { settings: KlipSettings; onBack: () => void }) {
+  const mind =
+    settings.mindProvider === 'openai' ? 'OpenAI'
+    : settings.mindProvider === 'gemini' ? 'Gemini'
+    : settings.mindProvider === 'ollama' ? 'Local model'
+    : 'Anthropic';
   return (
     <>
-      <div className="ob-hero-icon"><CursorIcon size={64} /></div>
+      <div className="ob-hero-icon"><KlipPet mood="success" size={64} /></div>
       <h1 className="ob-h1">You&apos;re all set<em>.</em></h1>
       <p className="ob-lead">
-        Flicky lives in your system tray. Close this window and it keeps running; hold{' '}
+        KLIP lives in your system tray. Close this window and it keeps running; hold{' '}
         <Keys shortcut={settings.pushToTalkShortcut} /> from anywhere.
       </p>
       <ul className="ob-bullets">
@@ -829,7 +939,7 @@ function DoneStep({ settings, onBack }: { settings: FlickySettings; onBack: () =
         Everything here can be changed later from the panel, and you can rerun this setup
         from General → &ldquo;Run setup again&rdquo;.
       </p>
-      <Footer onBack={onBack} onNext={() => window.flicky.completeOnboarding()} nextLabel="Start using Flicky →" />
+      <Footer onBack={onBack} onNext={() => window.klip.completeOnboarding()} nextLabel="Start using KLIP →" />
     </>
   );
 }

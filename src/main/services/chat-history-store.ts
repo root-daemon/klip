@@ -21,7 +21,7 @@ let cache: ChatEntry[] | null = null;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
 function getFilePath(): string {
-  return path.join(app.getPath('userData'), 'flicky-chat-history.json');
+  return path.join(app.getPath('userData'), 'klip-chat-history.json');
 }
 
 function readFromDisk(): ChatEntry[] {
@@ -44,7 +44,7 @@ function flushNow(): void {
   try {
     writeFileAtomic(getFilePath(), JSON.stringify(cache, null, 2));
   } catch (err) {
-    console.error('[Flicky] chat history flush failed:', err);
+    console.error('[Klip] chat history flush failed:', err);
   }
 }
 

@@ -10,7 +10,7 @@ export function Tour({ shortcut, onNavigate }: TourProps) {
     <section className="tour">
       <header className="tour-head">
         <div>
-          <h2 className="tour-heading">How Flicky works</h2>
+          <h2 className="tour-heading">How KLIP works</h2>
           <p className="tour-sub">Four things to know. Takes about thirty seconds.</p>
         </div>
       </header>
@@ -28,7 +28,7 @@ export function Tour({ shortcut, onNavigate }: TourProps) {
                   {i < keys.length - 1 && <span className="plus">+</span>}
                 </span>
               ))}{' '}
-              from anywhere and speak. Release when you're done — Flicky takes it from there.
+              from anywhere and speak. Release when you're done — KLIP takes it from there.
             </p>
           </div>
         </li>
@@ -36,11 +36,11 @@ export function Tour({ shortcut, onNavigate }: TourProps) {
         <li className="tour-step">
           <div className="tour-num">02</div>
           <div className="tour-body">
-            <h3>Flicky sees your screen.</h3>
+            <h3>KLIP sees your screen.</h3>
             <p>
               Ask about what's in front of you — "what does this error mean," "where's the
               checkout button," "summarize this article." A screenshot is captured with every
-              turn so Flicky can reference specific things on-screen.
+              turn so KLIP can reference specific things on-screen.
             </p>
           </div>
         </li>
@@ -48,10 +48,10 @@ export function Tour({ shortcut, onNavigate }: TourProps) {
         <li className="tour-step">
           <div className="tour-num">03</div>
           <div className="tour-body">
-            <h3>The blue cursor points things out.</h3>
+            <h3>KLIP points things out.</h3>
             <p>
-              When Flicky wants to show you where something is, a small blue pointer flies to
-              that exact spot on the screen and hovers there while the answer plays.
+              When KLIP wants to show you where something is, it glides to that exact spot on
+              the screen and hovers there while the answer plays.
             </p>
           </div>
         </li>

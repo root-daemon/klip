@@ -9,7 +9,7 @@ export type BuddyNavigationMode =
 
 // ── Transcription ──────────────────────────────────────────────────────
 
-export type TranscriptionProviderType = 'groq' | 'openai' | 'native';
+export type TranscriptionProviderType = 'groq' | 'openai' | 'sarvam' | 'native';
 
 export type GroqTranscriptionModel =
   | 'whisper-large-v3'
@@ -25,7 +25,11 @@ export interface TranscriptionResult {
 export interface DisplayInfo {
   id: number;
   bounds: { x: number; y: number; width: number; height: number };
+  /** Usable area excluding the taskbar — the pet docks relative to this. */
+  workArea: { x: number; y: number; width: number; height: number };
   scaleFactor: number;
+  /** True for the display KLIP treats as home base for its resting dock. */
+  isPrimary: boolean;
 }
 
 /**
@@ -33,7 +37,7 @@ export interface DisplayInfo {
  * `webPreferences.additionalArguments`, so the renderer can read it
  * synchronously at startup instead of racing an IPC message.
  */
-export const DISPLAY_INFO_ARG_PREFIX = '--flicky-display-info=';
+export const DISPLAY_INFO_ARG_PREFIX = '--klip-display-info=';
 
 // ── Screen Capture ─────────────────────────────────────────────────────
 
@@ -52,8 +56,13 @@ export type ClaudeModel = 'claude-sonnet-4-6' | 'claude-opus-4-6';
 
 export type OpenAIModel = 'gpt-5' | 'gpt-5-mini' | 'gpt-4o';
 
+export type GeminiModel = 'gemini-3.1-pro-preview' | 'gemini-3.6-flash';
+
 /** Which service backs the Mind (reasoning) capability. */
-export type MindProvider = 'anthropic' | 'openai' | 'ollama';
+export type MindProvider = 'anthropic' | 'openai' | 'gemini' | 'ollama';
+
+/** Which service backs the Voice (TTS) capability. */
+export type TtsProvider = 'elevenlabs' | 'sarvam';
 
 /** Extended-thinking budget mapping. */
 export type ReasoningDepth = 'off' | 'medium' | 'deep';
@@ -134,12 +143,14 @@ export interface LocalConnection {
 
 // ── API Keys ───────────────────────────────────────────────────────────
 
-export type ApiKeyName = 'anthropic' | 'openai' | 'elevenlabs' | 'groq';
+export type ApiKeyName = 'anthropic' | 'openai' | 'gemini' | 'elevenlabs' | 'sarvam' | 'groq';
 
 export interface ApiKeyStatus {
   anthropic: boolean;
   openai: boolean;
+  gemini: boolean;
   elevenlabs: boolean;
+  sarvam: boolean;
   groq: boolean;
 }
 
@@ -180,6 +191,16 @@ export const VOICE_PRESETS: VoicePreset[] = [
   { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', description: 'crisp · narration · en-US' },
 ];
 
+/** Sarvam AI (Bulbul v2) speaker presets — strong Indian-language coverage. */
+export const SARVAM_VOICE_PRESETS: VoicePreset[] = [
+  { id: 'anushka', name: 'Anushka', description: 'warm · conversational · multilingual' },
+  { id: 'meera', name: 'Meera', description: 'calm · narrator · multilingual' },
+  { id: 'vidya', name: 'Vidya', description: 'clear · assistant-like · multilingual' },
+  { id: 'arya', name: 'Arya', description: 'bright · energetic · multilingual' },
+  { id: 'abhilash', name: 'Abhilash', description: 'steady · confident · multilingual' },
+  { id: 'karun', name: 'Karun', description: 'deep · narration · multilingual' },
+];
+
 // ── Chat History ───────────────────────────────────────────────────────
 
 export interface ChatEntry {
@@ -217,18 +238,22 @@ export interface StreamWindowBounds {
   height: number;
 }
 
-export interface FlickySettings {
+export interface KlipSettings {
   // Mind
   mindProvider: MindProvider;
   selectedModel: ClaudeModel;
   selectedOpenAIModel: OpenAIModel;
+  selectedGeminiModel: GeminiModel;
   reasoningDepth: ReasoningDepth;
   replyTone: ReplyTone;
 
   // Voice (TTS)
+  ttsProvider: TtsProvider;
   voiceId: string;
   voiceSpeed: number;    // 0.7 – 1.2 (ElevenLabs accepted range)
   voiceStability: number; // 0 – 1
+  /** Sarvam (Bulbul) speaker id — see SARVAM_VOICE_PRESETS. */
+  sarvamSpeaker: string;
   speakReplies: boolean;
 
   // Ear (transcription)
@@ -248,7 +273,7 @@ export interface FlickySettings {
    */
   pttMode: PttMode;
   /**
-   * If true, Flicky may type text directly into the focused field when
+   * If true, Klip may type text directly into the focused field when
    * the model emits a [TYPE:...] tag. Requires Accessibility permission
    * on macOS and the native auto-typer module to be available; falls
    * back to clipboard handoff in either case. Off by default.
@@ -257,7 +282,7 @@ export interface FlickySettings {
   /**
    * Controls the transparent stream window:
    * - 'off'       — never shown
-   * - 'responses' — shown only while Flicky is actively answering
+   * - 'responses' — shown only while Klip is actively answering
    * - 'always'    — shown continuously once the app starts
    */
   streamVisibility: StreamVisibility;
@@ -274,16 +299,19 @@ export interface FlickySettings {
   encryptionAvailable: boolean;
 }
 
-export const DEFAULT_SETTINGS: FlickySettings = {
+export const DEFAULT_SETTINGS: KlipSettings = {
   mindProvider: 'anthropic',
   selectedModel: 'claude-sonnet-4-6',
   selectedOpenAIModel: 'gpt-5',
+  selectedGeminiModel: 'gemini-3.6-flash',
   reasoningDepth: 'off',
   replyTone: 'friendly',
 
+  ttsProvider: 'elevenlabs',
   voiceId: 'pMsXgVXv3BLzUgSXRplE',
   voiceSpeed: 1.0,
   voiceStability: 0.5,
+  sarvamSpeaker: 'anushka',
   speakReplies: true,
 
   groqTranscriptionModel: 'whisper-large-v3-turbo',
@@ -300,7 +328,7 @@ export const DEFAULT_SETTINGS: FlickySettings = {
   localConnections: [],
 
   onboardingComplete: false,
-  apiKeyStatus: { anthropic: false, openai: false, elevenlabs: false, groq: false },
+  apiKeyStatus: { anthropic: false, openai: false, gemini: false, elevenlabs: false, sarvam: false, groq: false },
   encryptionAvailable: true,
 };
 
@@ -347,14 +375,19 @@ export const IPC = {
   PUSH_TO_TALK_STOP: 'push-to-talk-stop',
   SET_MODEL: 'set-model',
   SET_OPENAI_MODEL: 'set-openai-model',
+  SET_GEMINI_MODEL: 'set-gemini-model',
   SET_MIND_PROVIDER: 'set-mind-provider',
   SET_REASONING_DEPTH: 'set-reasoning-depth',
   SET_REPLY_TONE: 'set-reply-tone',
+  SET_TTS_PROVIDER: 'set-tts-provider',
   SET_VOICE_ID: 'set-voice-id',
   SET_VOICE_SPEED: 'set-voice-speed',
   SET_VOICE_STABILITY: 'set-voice-stability',
+  SET_SARVAM_SPEAKER: 'set-sarvam-speaker',
   SET_SPEAK_REPLIES: 'set-speak-replies',
   SET_GROQ_MODEL: 'set-groq-model',
+  SET_TRANSCRIPTION_PROVIDER: 'set-transcription-provider',
+  PLAY_SARVAM_VOICE_PREVIEW: 'play-sarvam-voice-preview',
   TOGGLE_CURSOR: 'toggle-cursor',
   SET_LAUNCH_AT_LOGIN: 'set-launch-at-login',
   SET_PUSH_TO_TALK_SHORTCUT: 'set-push-to-talk-shortcut',

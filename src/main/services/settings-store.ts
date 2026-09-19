@@ -5,7 +5,9 @@ import { writeFileAtomic } from './fs-util';
 import type {
   ClaudeModel,
   OpenAIModel,
+  GeminiModel,
   MindProvider,
+  TtsProvider,
   GroqTranscriptionModel,
   TranscriptionProviderType,
   ReasoningDepth,
@@ -25,12 +27,15 @@ export interface StoredSettings {
   mindProvider: MindProvider;
   selectedModel: ClaudeModel;
   selectedOpenAIModel: OpenAIModel;
+  selectedGeminiModel: GeminiModel;
   reasoningDepth: ReasoningDepth;
   replyTone: ReplyTone;
 
+  ttsProvider: TtsProvider;
   voiceId: string;
   voiceSpeed: number;
   voiceStability: number;
+  sarvamSpeaker: string;
   speakReplies: boolean;
 
   groqTranscriptionModel: GroqTranscriptionModel;
@@ -53,12 +58,15 @@ const DEFAULTS: StoredSettings = {
   mindProvider: 'anthropic',
   selectedModel: 'claude-sonnet-4-6',
   selectedOpenAIModel: 'gpt-5',
+  selectedGeminiModel: 'gemini-3.6-flash',
   reasoningDepth: 'off',
   replyTone: 'friendly',
 
+  ttsProvider: 'elevenlabs',
   voiceId: 'pMsXgVXv3BLzUgSXRplE',
   voiceSpeed: 1.0,
   voiceStability: 0.5,
+  sarvamSpeaker: 'anushka',
   speakReplies: true,
 
   groqTranscriptionModel: 'whisper-large-v3-turbo',
@@ -80,7 +88,7 @@ const DEFAULTS: StoredSettings = {
 };
 
 function getFilePath(): string {
-  return path.join(app.getPath('userData'), 'flicky-settings.json');
+  return path.join(app.getPath('userData'), 'klip-settings.json');
 }
 
 /**
@@ -91,10 +99,21 @@ function getFilePath(): string {
  */
 let cache: StoredSettings | null = null;
 
+/** Model IDs get retired by providers faster than this file gets edited.
+ *  A value on disk that no longer matches a currently-offered option
+ *  would otherwise wedge the user on a permanent 404 until they happen
+ *  to reopen that picker — silently fall back to the current default
+ *  instead. */
+const VALID_GEMINI_MODELS: GeminiModel[] = ['gemini-3.6-flash', 'gemini-3.1-pro-preview'];
+
 function readDisk(): StoredSettings {
   try {
     const raw = fs.readFileSync(getFilePath(), 'utf-8');
-    return { ...DEFAULTS, ...JSON.parse(raw) };
+    const merged: StoredSettings = { ...DEFAULTS, ...JSON.parse(raw) };
+    if (!VALID_GEMINI_MODELS.includes(merged.selectedGeminiModel)) {
+      merged.selectedGeminiModel = DEFAULTS.selectedGeminiModel;
+    }
+    return merged;
   } catch {
     return { ...DEFAULTS };
   }

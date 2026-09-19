@@ -1,24 +1,30 @@
 import { app, systemPreferences, shell, desktopCapturer, clipboard } from 'electron';
 import { ClaudeAPI } from './services/claude-api';
 import { OpenAIAPI } from './services/openai-api';
+import { GeminiAPI } from './services/gemini-api';
 import { OllamaAPI } from './services/ollama-api';
 import { ElevenLabsTTS } from './services/elevenlabs-tts';
+import { SarvamTTS } from './services/sarvam-tts';
 import { createTranscriptionProvider, type TranscriptionProvider } from './services/transcription';
 import { captureAllDisplays } from './services/screen-capture';
 import { parseAllPointTags, parseTypeTags, TAG_STRIP_REGEX } from './services/element-detector';
 import { typeText, isAccessibilityGranted, promptAccessibility } from './services/auto-typer';
 import { ContextManager } from './services/context-manager';
 import * as settingsStore from './services/settings-store';
+import type { StoredSettings } from './services/settings-store';
 import * as keyStore from './services/key-store';
 import * as chatHistory from './services/chat-history-store';
 import * as analytics from './services/analytics';
 import type {
   VoiceState,
-  FlickySettings,
+  KlipSettings,
   ClaudeModel,
   OpenAIModel,
+  GeminiModel,
   MindProvider,
+  TtsProvider,
   GroqTranscriptionModel,
+  TranscriptionProviderType,
   TranscriptionResult,
   Walkthrough,
   PttMode,
@@ -50,12 +56,12 @@ export interface CompanionCallbacks {
   /** Active step index (0-based) inside the current walkthrough, or null when idle. */
   onWalkthroughStep: (index: number | null) => void;
   onTypeFulfilled: (request: TypeRequest) => void;
-  onSettingsChanged: (settings: FlickySettings) => void;
+  onSettingsChanged: (settings: KlipSettings) => void;
   onMemoryStatsChanged: (stats: MemoryStats) => void;
   onChatEntryAdded: (entry: ChatEntry) => void;
   onStartAudioCapture: () => void;
   onStopAudioCapture: () => void;
-  onPlayAudio: (audioBuffer: Buffer) => void;
+  onPlayAudio: (audioBuffer: Buffer, mimeType: string) => void;
   onCursorVisibilityChanged: (enabled: boolean) => void;
   onStreamVisibilityChanged: (v: StreamVisibility) => void;
 }
@@ -65,8 +71,10 @@ export class CompanionManager {
 
   private claude: ClaudeAPI;
   private openai: OpenAIAPI;
+  private gemini: GeminiAPI;
   private ollama: OllamaAPI;
-  private tts: ElevenLabsTTS;
+  private elevenLabsTts: ElevenLabsTTS;
+  private sarvamTts: SarvamTTS;
   private context: ContextManager;
   private transcriptionProvider: TranscriptionProvider | null = null;
 
@@ -107,8 +115,10 @@ export class CompanionManager {
     this.callbacks = callbacks;
     this.claude = new ClaudeAPI();
     this.openai = new OpenAIAPI();
+    this.gemini = new GeminiAPI();
     this.ollama = new OllamaAPI();
-    this.tts = new ElevenLabsTTS();
+    this.elevenLabsTts = new ElevenLabsTTS();
+    this.sarvamTts = new SarvamTTS();
     this.context = new ContextManager();
 
     analytics.initAnalytics('', 'https://us.i.posthog.com');
@@ -117,7 +127,7 @@ export class CompanionManager {
 
   // ── Settings ─────────────────────────────────────────────────────────
 
-  getSettings(): FlickySettings {
+  getSettings(): KlipSettings {
     const stored = settingsStore.getAll();
     return {
       ...stored,
@@ -136,6 +146,11 @@ export class CompanionManager {
     this.emitSettings();
   }
 
+  setGeminiModel(model: GeminiModel): void {
+    settingsStore.set('selectedGeminiModel', model);
+    this.emitSettings();
+  }
+
   setMindProvider(provider: MindProvider): void {
     settingsStore.set('mindProvider', provider);
     this.emitSettings();
@@ -148,6 +163,11 @@ export class CompanionManager {
 
   setReplyTone(tone: ReplyTone): void {
     settingsStore.set('replyTone', tone);
+    this.emitSettings();
+  }
+
+  setTtsProvider(provider: TtsProvider): void {
+    settingsStore.set('ttsProvider', provider);
     this.emitSettings();
   }
 
@@ -166,6 +186,11 @@ export class CompanionManager {
     this.emitSettings();
   }
 
+  setSarvamSpeaker(speaker: string): void {
+    settingsStore.set('sarvamSpeaker', speaker);
+    this.emitSettings();
+  }
+
   setSpeakReplies(enabled: boolean): void {
     settingsStore.set('speakReplies', enabled);
     this.emitSettings();
@@ -173,6 +198,11 @@ export class CompanionManager {
 
   setGroqModel(model: GroqTranscriptionModel): void {
     settingsStore.set('groqTranscriptionModel', model);
+    this.emitSettings();
+  }
+
+  setTranscriptionProvider(provider: TranscriptionProviderType): void {
+    settingsStore.set('transcriptionProvider', provider);
     this.emitSettings();
   }
 
@@ -208,7 +238,7 @@ export class CompanionManager {
     if (ok) {
       settingsStore.set('pushToTalkShortcut', accelerator);
     } else {
-      console.warn('[Flicky] Failed to register shortcut', accelerator, '— reverting to', previous);
+      console.warn('[Klip] Failed to register shortcut', accelerator, '— reverting to', previous);
       this.reRegisterShortcut(previous);
     }
     this.emitSettings();
@@ -235,7 +265,7 @@ export class CompanionManager {
     try {
       app.setLoginItemSettings({ openAtLogin: enabled });
     } catch (err) {
-      console.error('[Flicky] setLoginItemSettings failed:', err);
+      console.error('[Klip] setLoginItemSettings failed:', err);
     }
     this.emitSettings();
   }
@@ -305,21 +335,54 @@ export class CompanionManager {
     return keyStore.getKeyStatus();
   }
 
-  // ── TTS preview ──────────────────────────────────────────────────────
+  // ── TTS ──────────────────────────────────────────────────────────────
+
+  /** Synthesize with whichever TTS provider is currently active. */
+  private async synthesizeReply(
+    text: string,
+    settings: StoredSettings,
+  ): Promise<{ buffer: Buffer; mimeType: string }> {
+    if (settings.ttsProvider === 'sarvam') {
+      const buffer = await this.sarvamTts.synthesize(text, { speaker: settings.sarvamSpeaker });
+      return { buffer, mimeType: 'audio/wav' };
+    }
+    const buffer = await this.elevenLabsTts.synthesize(text, {
+      voiceId: settings.voiceId,
+      speed: settings.voiceSpeed,
+      stability: settings.voiceStability,
+    });
+    return { buffer, mimeType: 'audio/mpeg' };
+  }
+
+  private hasActiveTtsKey(settings: StoredSettings): boolean {
+    return keyStore.getKeyStatus()[settings.ttsProvider];
+  }
 
   async playVoicePreview(voiceId: string): Promise<void> {
     try {
-      const buf = await this.tts.synthesize(
-        "hi, i'm flicky. i'll be using this voice to talk with you.",
+      const buf = await this.elevenLabsTts.synthesize(
+        "hi, i'm klip. i'll be using this voice to talk with you.",
         {
           voiceId,
           speed: settingsStore.get('voiceSpeed'),
           stability: settingsStore.get('voiceStability'),
         },
       );
-      this.callbacks.onPlayAudio(buf);
+      this.callbacks.onPlayAudio(buf, 'audio/mpeg');
     } catch (err) {
-      console.error('[Flicky] voice preview failed:', err);
+      console.error('[Klip] voice preview failed:', err);
+    }
+  }
+
+  async playSarvamVoicePreview(speaker: string): Promise<void> {
+    try {
+      const buf = await this.sarvamTts.synthesize(
+        "hi, i'm klip. i'll be using this voice to talk with you.",
+        { speaker },
+      );
+      this.callbacks.onPlayAudio(buf, 'audio/wav');
+    } catch (err) {
+      console.error('[Klip] Sarvam voice preview failed:', err);
     }
   }
 
@@ -341,7 +404,7 @@ export class CompanionManager {
     } else if (process.platform === 'win32') {
       // Windows 10/11 gate desktop-app microphone access under
       // Settings → Privacy → Microphone. When it's off, getUserMedia in
-      // the overlay fails and Flicky silently hears nothing — the #1
+      // the overlay fails and Klip silently hears nothing — the #1
       // "it doesn't work" report. Electron exposes the same status
       // query on Windows, so surface it.
       try {
@@ -349,7 +412,7 @@ export class CompanionManager {
         perms.microphoneStatus = mic;
         perms.microphone = mic === 'granted' || mic === 'not-determined';
       } catch (err) {
-        console.error('[Flicky] mic status probe failed:', err);
+        console.error('[Klip] mic status probe failed:', err);
       }
     }
     return perms;
@@ -381,7 +444,7 @@ export class CompanionManager {
     }
 
     if (kind === 'accessibility') {
-      // Calling with `true` adds Flicky to the Accessibility list and
+      // Calling with `true` adds Klip to the Accessibility list and
       // surfaces the OS dialog. The user still has to flip the checkbox
       // themselves; we deeplink to the right pane in case the dialog
       // got dismissed.
@@ -403,7 +466,7 @@ export class CompanionManager {
             thumbnailSize: { width: 1, height: 1 },
           });
         } catch (err) {
-          console.error('[Flicky] screen permission probe failed:', err);
+          console.error('[Klip] screen permission probe failed:', err);
         }
       } else if (status === 'denied' || status === 'restricted') {
         shell.openExternal(
@@ -500,7 +563,7 @@ export class CompanionManager {
 
   private async startRecording(): Promise<void> {
     // Bump the turn and abort any in-flight work from the previous one
-    // so the user's new message supersedes whatever Flicky was doing.
+    // so the user's new message supersedes whatever Klip was doing.
     this.turnId += 1;
     if (this.currentAbort) {
       this.currentAbort.abort();
@@ -587,19 +650,15 @@ export class CompanionManager {
       // window than the panel.
       const settings = settingsStore.getAll();
       const msg = process.platform === 'darwin'
-        ? "i can't see your screen right now — give flicky screen recording permission in system settings, then quit and reopen the app."
+        ? "i can't see your screen right now — give klip screen recording permission in system settings, then quit and reopen the app."
         : "i can't see your screen right now — screen capture failed.";
       this.callbacks.onAiResponseChunk(msg);
       this.callbacks.onAiResponseComplete(msg);
-      if (settings.speakReplies && keyStore.getKeyStatus().elevenlabs) {
+      if (settings.speakReplies && this.hasActiveTtsKey(settings)) {
         this.setVoiceState('responding');
         try {
-          const audioBuffer = await this.tts.synthesize(msg, {
-            voiceId: settings.voiceId,
-            speed: settings.voiceSpeed,
-            stability: settings.voiceStability,
-          });
-          this.callbacks.onPlayAudio(audioBuffer);
+          const { buffer, mimeType } = await this.synthesizeReply(msg, settings);
+          this.callbacks.onPlayAudio(buffer, mimeType);
         } catch (err) {
           console.error('TTS error on screen-capture failure path:', err);
         }
@@ -655,7 +714,7 @@ export class CompanionManager {
         const walkthrough = parseAllPointTags(fullText, this.lastScreenshots);
         if (walkthrough) {
           console.log(
-            `[Flicky] Walkthrough: ${walkthrough.steps.length} step(s) →`,
+            `[Klip] Walkthrough: ${walkthrough.steps.length} step(s) →`,
             walkthrough.steps.map((s) => `${s.step}/${s.total} "${s.label}"`).join(', '),
           );
           this.startWalkthrough(walkthrough, isCurrent);
@@ -683,23 +742,19 @@ export class CompanionManager {
             clipboard.writeText(text);
           }
           console.log(
-            `[Flicky] Type request → ${autoTyped ? 'auto-typed' : 'clipboard'}: "${preview}"`,
+            `[Klip] Type request → ${autoTyped ? 'auto-typed' : 'clipboard'}: "${preview}"`,
           );
           this.callbacks.onTypeFulfilled({ text, preview, autoTyped });
         }
 
-        if (settings.speakReplies && keyStore.getKeyStatus().elevenlabs) {
+        if (settings.speakReplies && this.hasActiveTtsKey(settings)) {
           try {
-            const audioBuffer = await this.tts.synthesize(cleanText, {
-              voiceId: settings.voiceId,
-              speed: settings.voiceSpeed,
-              stability: settings.voiceStability,
-            });
+            const { buffer, mimeType } = await this.synthesizeReply(cleanText, settings);
             // User may have started a new turn while TTS was synthesizing;
             // don't play an answer they no longer want to hear.
             if (!isCurrent()) return;
             this.setVoiceState('responding');
-            this.callbacks.onPlayAudio(audioBuffer);
+            this.callbacks.onPlayAudio(buffer, mimeType);
           } catch (err) {
             console.error('TTS error:', err);
             analytics.trackTtsError(String(err));
@@ -730,6 +785,15 @@ export class CompanionManager {
         this.lastScreenshots,
         this.context.getMessagesForSend(),
         settings.selectedOpenAIModel,
+        mindOptions,
+        mindCallbacks,
+      );
+    } else if (settings.mindProvider === 'gemini') {
+      await this.gemini.streamChat(
+        result.text,
+        this.lastScreenshots,
+        this.context.getMessagesForSend(),
+        settings.selectedGeminiModel,
         mindOptions,
         mindCallbacks,
       );

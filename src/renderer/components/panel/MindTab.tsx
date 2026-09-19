@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import type {
-  FlickySettings,
+  KlipSettings,
   ClaudeModel,
   OpenAIModel,
+  GeminiModel,
   MindProvider,
   ReasoningDepth,
   ReplyTone,
@@ -11,7 +12,7 @@ import { ProviderKey } from './ProviderKey';
 import { OllamaSection } from './OllamaSection';
 
 interface MindTabProps {
-  settings: FlickySettings;
+  settings: KlipSettings;
 }
 
 interface ModelEntry<M extends string> {
@@ -54,19 +55,34 @@ const OPENAI_MODELS: Array<ModelEntry<OpenAIModel>> = [
   },
 ];
 
+const GEMINI_MODELS: Array<ModelEntry<GeminiModel>> = [
+  {
+    id: 'gemini-3.6-flash',
+    name: 'Gemini 3.6 Flash',
+    sub: 'fast · cheap · supports extended thinking',
+    tag: { label: 'recommended', cls: 'info' },
+  },
+  {
+    id: 'gemini-3.1-pro-preview',
+    name: 'Gemini 3.1 Pro',
+    sub: 'deepest reasoning · slower · preview',
+  },
+];
+
 export function MindTab({ settings }: MindTabProps) {
   const [providerOpen, setProviderOpen] = useState(false);
 
   const provider = settings.mindProvider;
   const isAnthropic = provider === 'anthropic';
   const isOpenAI = provider === 'openai';
+  const isGemini = provider === 'gemini';
   const isOllama = provider === 'ollama';
-  const setTone = (t: ReplyTone) => window.flicky.setReplyTone(t);
-  const setDepth = (d: ReasoningDepth) => window.flicky.setReasoningDepth(d);
+  const setTone = (t: ReplyTone) => window.klip.setReplyTone(t);
+  const setDepth = (d: ReasoningDepth) => window.klip.setReasoningDepth(d);
 
-  const providerLabel = isAnthropic ? 'Anthropic' : isOpenAI ? 'OpenAI' : 'Local';
-  const providerLogoText = isAnthropic ? 'A' : isOpenAI ? 'Ai' : '⬡';
-  const providerLogoClass = isAnthropic ? '' : isOpenAI ? 'openai' : 'local';
+  const providerLabel = isAnthropic ? 'Anthropic' : isOpenAI ? 'OpenAI' : isGemini ? 'Gemini' : 'Local';
+  const providerLogoText = isAnthropic ? 'A' : isOpenAI ? 'Ai' : isGemini ? 'G' : '⬡';
+  const providerLogoClass = isAnthropic ? '' : isOpenAI ? 'openai' : isGemini ? 'gemini' : 'local';
 
   return (
     <>
@@ -74,7 +90,7 @@ export function MindTab({ settings }: MindTabProps) {
         Mind<em>.</em>
       </h1>
       <p className="main-lead">
-        How Flicky thinks — which provider, which model, how deep it reasons, and the tone of
+        How KLIP thinks — which provider, which model, how deep it reasons, and the tone of
         its replies.
       </p>
 
@@ -99,6 +115,7 @@ export function MindTab({ settings }: MindTabProps) {
               [
                 { id: 'anthropic', label: 'Anthropic', sub: 'Claude Sonnet / Opus · built-in web search' },
                 { id: 'openai', label: 'OpenAI', sub: 'GPT-5 · GPT-4o · reasoning effort' },
+                { id: 'gemini', label: 'Gemini', sub: 'Gemini 2.5 Pro / Flash · Google Search grounding' },
                 { id: 'ollama', label: 'Local', sub: 'Ollama · LM Studio · vLLM · any OpenAI-compatible endpoint' },
               ] as Array<{ id: MindProvider; label: string; sub: string }>
             ).map((p) => (
@@ -106,7 +123,7 @@ export function MindTab({ settings }: MindTabProps) {
                 key={p.id}
                 className={`voice-item ${provider === p.id ? 'on' : ''}`}
                 onClick={() => {
-                  window.flicky.setMindProvider(p.id);
+                  window.klip.setMindProvider(p.id);
                   setProviderOpen(false);
                 }}
               >
@@ -138,6 +155,17 @@ export function MindTab({ settings }: MindTabProps) {
             hideProviderHeader
           />
         )}
+        {isGemini && (
+          <ProviderKey
+            name="gemini"
+            providerLabel="Gemini"
+            providerLogo="G"
+            providerLogoClass="gemini"
+            isSet={settings.apiKeyStatus.gemini}
+            keyPlaceholder="AIza..."
+            hideProviderHeader
+          />
+        )}
         {!isOllama && (
           <p className="section-hint">Powers the reasoning behind every answer.</p>
         )}
@@ -151,7 +179,7 @@ export function MindTab({ settings }: MindTabProps) {
           onToggleOllama={(enabled) => {
             const conns = settings.localConnections ?? [];
             conns.forEach((c) => {
-              void window.flicky.updateLocalConnection(c.id, { enabled });
+              void window.klip.updateLocalConnection(c.id, { enabled });
             });
           }}
         />
@@ -160,42 +188,58 @@ export function MindTab({ settings }: MindTabProps) {
           <div className="section">
             <div className="section-title" style={{ marginBottom: 14 }}>Model</div>
             <div className="model-list">
-              {isAnthropic
-                ? CLAUDE_MODELS.map((m) => (
-                    <button
-                      key={m.id}
-                      className={`model-item ${settings.selectedModel === m.id ? 'on' : ''}`}
-                      onClick={() => window.flicky.setModel(m.id)}
-                    >
-                      <div className="model-radio" />
-                      <div className="model-meta">
-                        <div className="model-name">{m.name}</div>
-                        <div className="model-sub">{m.sub}</div>
-                      </div>
-                      {m.tag && <div className={`model-tag ${m.tag.cls}`}>{m.tag.label}</div>}
-                    </button>
-                  ))
-                : OPENAI_MODELS.map((m) => (
-                    <button
-                      key={m.id}
-                      className={`model-item ${settings.selectedOpenAIModel === m.id ? 'on' : ''}`}
-                      onClick={() => window.flicky.setOpenAIModel(m.id)}
-                    >
-                      <div className="model-radio" />
-                      <div className="model-meta">
-                        <div className="model-name">{m.name}</div>
-                        <div className="model-sub">{m.sub}</div>
-                      </div>
-                      {m.tag && <div className={`model-tag ${m.tag.cls}`}>{m.tag.label}</div>}
-                    </button>
-                  ))}
+              {isAnthropic &&
+                CLAUDE_MODELS.map((m) => (
+                  <button
+                    key={m.id}
+                    className={`model-item ${settings.selectedModel === m.id ? 'on' : ''}`}
+                    onClick={() => window.klip.setModel(m.id)}
+                  >
+                    <div className="model-radio" />
+                    <div className="model-meta">
+                      <div className="model-name">{m.name}</div>
+                      <div className="model-sub">{m.sub}</div>
+                    </div>
+                    {m.tag && <div className={`model-tag ${m.tag.cls}`}>{m.tag.label}</div>}
+                  </button>
+                ))}
+              {isOpenAI &&
+                OPENAI_MODELS.map((m) => (
+                  <button
+                    key={m.id}
+                    className={`model-item ${settings.selectedOpenAIModel === m.id ? 'on' : ''}`}
+                    onClick={() => window.klip.setOpenAIModel(m.id)}
+                  >
+                    <div className="model-radio" />
+                    <div className="model-meta">
+                      <div className="model-name">{m.name}</div>
+                      <div className="model-sub">{m.sub}</div>
+                    </div>
+                    {m.tag && <div className={`model-tag ${m.tag.cls}`}>{m.tag.label}</div>}
+                  </button>
+                ))}
+              {isGemini &&
+                GEMINI_MODELS.map((m) => (
+                  <button
+                    key={m.id}
+                    className={`model-item ${settings.selectedGeminiModel === m.id ? 'on' : ''}`}
+                    onClick={() => window.klip.setGeminiModel(m.id)}
+                  >
+                    <div className="model-radio" />
+                    <div className="model-meta">
+                      <div className="model-name">{m.name}</div>
+                      <div className="model-sub">{m.sub}</div>
+                    </div>
+                    {m.tag && <div className={`model-tag ${m.tag.cls}`}>{m.tag.label}</div>}
+                  </button>
+                ))}
             </div>
           </div>
 
           <div className="section">
             <div className="section-title" style={{ marginBottom: 6 }}>Reasoning depth</div>
             <p className="section-hint" style={{ margin: '0 0 14px' }}>
-              How much Flicky thinks before replying.
+              How much KLIP thinks before replying.
             </p>
             <div className="seg">
               <button

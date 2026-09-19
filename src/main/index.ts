@@ -22,7 +22,7 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 }
-// Flicky lives in the tray, so on Windows the natural thing to do when
+// Klip lives in the tray, so on Windows the natural thing to do when
 // you can't find it is to double-click the shortcut again. Without this
 // handler that second launch just exited and nothing visible happened —
 // which reads as "the app is broken". Surface the panel instead.
@@ -109,7 +109,7 @@ function createTrayIcon(): Electron.NativeImage {
     }
     return img.resize({ width: 16, height: 16 });
   } catch (err) {
-    console.error('[Flicky] tray icon load failed, using fallback:', err);
+    console.error('[Klip] tray icon load failed, using fallback:', err);
     // Generated fallback — cornflower-blue filled circle so the tray
     // entry is still clickable even if the PNGs are missing.
     const size = 32;
@@ -267,25 +267,25 @@ app.whenReady().then(() => {
     // an interleaved mess. Single overlay only.
     onStartAudioCapture: () => sendToOneOverlay(AUDIO_IPC.START_CAPTURE),
     onStopAudioCapture: () => sendToOneOverlay(AUDIO_IPC.STOP_CAPTURE),
-    onPlayAudio: (buf) => sendToOneOverlay('play-audio', buf),
+    onPlayAudio: (buf, mimeType) => sendToOneOverlay('play-audio', buf, mimeType),
     onCursorVisibilityChanged: (enabled) => applyOverlayVisibility(enabled),
     onStreamVisibilityChanged: (v) => applyStreamVisibility(v),
   });
 
   // Create tray
   tray = new Tray(createTrayIcon());
-  tray.setToolTip('Flicky');
+  tray.setToolTip('KLIP');
 
-  console.log('[Flicky] Tray created, registering click handler...');
+  console.log('[Klip] Tray created, registering click handler...');
 
   tray.on('click', () => togglePanel());
   tray.on('double-click', () => togglePanel());
 
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: 'Show Panel', click: () => { console.log('[Flicky] Show Panel menu clicked'); togglePanel(); } },
+      { label: 'Show Panel', click: () => { console.log('[Klip] Show Panel menu clicked'); togglePanel(); } },
       { type: 'separator' },
-      { label: 'Quit Flicky', click: () => app.quit() },
+      { label: 'Quit KLIP', click: () => app.quit() },
     ]),
   );
 
@@ -319,7 +319,7 @@ app.whenReady().then(() => {
     try {
       app.setLoginItemSettings({ openAtLogin: companion.getSettings().launchAtLogin });
     } catch (err) {
-      console.error('[Flicky] initial setLoginItemSettings failed:', err);
+      console.error('[Klip] initial setLoginItemSettings failed:', err);
     }
   }
 
@@ -416,7 +416,7 @@ app.whenReady().then(() => {
         return true;
       }
     } catch (err) {
-      console.error('[Flicky] shortcut register failed:', err);
+      console.error('[Klip] shortcut register failed:', err);
     }
     // Failure path: always try to restore the last-known-good binding so
     // the user isn't left without any shortcut at all, even when the
@@ -426,7 +426,7 @@ app.whenReady().then(() => {
         globalShortcut.register(previous, pttHandler);
         currentShortcut = previous;
       } catch (err) {
-        console.error('[Flicky] shortcut rollback failed:', err);
+        console.error('[Klip] shortcut rollback failed:', err);
         currentShortcut = '';
       }
     }
@@ -462,20 +462,24 @@ app.whenReady().then(() => {
   ipcMain.on(IPC.MIC_TEST_STOP, () => companion.stopMicTest());
   ipcMain.on(IPC.MIC_LEVEL, (_e, level: number) => sendToPanel(IPC.MIC_LEVEL, level));
   ipcMain.on(IPC.MIC_ERROR, (_e, message: string) => {
-    console.error('[Flicky] mic capture error from overlay:', message);
+    console.error('[Klip] mic capture error from overlay:', message);
     sendToPanel(IPC.MIC_ERROR, message);
     sendToPanel(IPC.AI_ERROR, `microphone unavailable — ${message}`);
   });
 
   ipcMain.on(IPC.SET_MODEL, (_e, model) => companion.setModel(model));
   ipcMain.on(IPC.SET_OPENAI_MODEL, (_e, model) => companion.setOpenAIModel(model));
+  ipcMain.on(IPC.SET_GEMINI_MODEL, (_e, model) => companion.setGeminiModel(model));
   ipcMain.on(IPC.SET_MIND_PROVIDER, (_e, provider) => companion.setMindProvider(provider));
   ipcMain.on(IPC.SET_REASONING_DEPTH, (_e, depth) => companion.setReasoningDepth(depth));
   ipcMain.on(IPC.SET_REPLY_TONE, (_e, tone) => companion.setReplyTone(tone));
+  ipcMain.on(IPC.SET_TTS_PROVIDER, (_e, provider) => companion.setTtsProvider(provider));
   ipcMain.on(IPC.SET_VOICE_ID, (_e, id) => companion.setVoiceId(id));
   ipcMain.on(IPC.SET_VOICE_SPEED, (_e, speed) => companion.setVoiceSpeed(speed));
   ipcMain.on(IPC.SET_VOICE_STABILITY, (_e, stab) => companion.setVoiceStability(stab));
+  ipcMain.on(IPC.SET_SARVAM_SPEAKER, (_e, speaker) => companion.setSarvamSpeaker(speaker));
   ipcMain.on(IPC.SET_SPEAK_REPLIES, (_e, enabled) => companion.setSpeakReplies(enabled));
+  ipcMain.on(IPC.SET_TRANSCRIPTION_PROVIDER, (_e, provider) => companion.setTranscriptionProvider(provider));
   ipcMain.on(IPC.TOGGLE_CURSOR, (_e, enabled) => companion.toggleCursor(enabled));
   ipcMain.on(IPC.SET_LAUNCH_AT_LOGIN, (_e, enabled) => companion.setLaunchAtLogin(enabled));
   ipcMain.on(IPC.SET_PUSH_TO_TALK_SHORTCUT, (_e, accel: string) => companion.setPushToTalkShortcut(accel));
@@ -495,6 +499,7 @@ app.whenReady().then(() => {
   ipcMain.on(IPC.CLEAR_CONTEXT, () => companion.clearContext());
   ipcMain.handle(IPC.COMPACT_CONTEXT, () => companion.compactContext());
   ipcMain.on(IPC.PLAY_VOICE_PREVIEW, (_e, voiceId) => { void companion.playVoicePreview(voiceId); });
+  ipcMain.on(IPC.PLAY_SARVAM_VOICE_PREVIEW, (_e, speaker) => { void companion.playSarvamVoicePreview(speaker); });
   ipcMain.handle(IPC.GET_MEMORY_STATS, () => companion.getMemoryStats());
   ipcMain.handle(IPC.GET_CHAT_HISTORY, () => companion.getChatHistory());
   ipcMain.on(IPC.CLEAR_CHAT_HISTORY, () => companion.clearChatHistory());
@@ -660,7 +665,7 @@ function togglePanel(): void {
   panelWindow = createPanelWindow();
   panelWindow.on('blur', () => { panelBlurredAt = Date.now(); });
   panelWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
-    console.error('[Flicky] Panel FAILED to load:', code, desc, url);
+    console.error('[Klip] Panel FAILED to load:', code, desc, url);
   });
   panelWindow.on('close', (e) => {
     // Don't destroy on close — hide so reopening is instant and keeps state.
@@ -741,7 +746,9 @@ function syncOverlayBounds(display: Electron.Display): void {
     win.webContents.send('display-info', {
       id: display.id,
       bounds: display.bounds,
+      workArea: display.workArea,
       scaleFactor: display.scaleFactor,
+      isPrimary: display.id === screen.getPrimaryDisplay().id,
     });
   }
 }
@@ -791,7 +798,7 @@ function destroyStreamWindow(): void {
 /**
  * Show or hide the stream window based on the current visibility
  * setting. 'responses' mode is refined further by updateStreamForVoiceState
- * which flicks it on when Flicky is thinking / speaking.
+ * which flicks it on when Klip is thinking / speaking.
  */
 function applyStreamVisibility(v: StreamVisibility): void {
   if (v === 'off') {
@@ -802,7 +809,7 @@ function applyStreamVisibility(v: StreamVisibility): void {
     ensureStreamWindow().showInactive();
     return;
   }
-  // 'responses' — reconcile with whatever Flicky is currently doing
+  // 'responses' — reconcile with whatever Klip is currently doing
   // so switching *into* this mode immediately reflects the real state.
   // We don't pre-create the window here; updateStreamForVoiceState will
   // spin it up the first time something happens worth showing.

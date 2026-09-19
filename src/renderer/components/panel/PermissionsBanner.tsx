@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { FlickySettings, PermissionStatus } from '../../../shared/types';
+import type { KlipSettings, PermissionStatus } from '../../../shared/types';
 
 interface Row {
   kind: 'microphone' | 'screen' | 'accessibility';
@@ -8,26 +8,26 @@ interface Row {
   /** Which platforms actually gate this. */
   platforms: NodeJS.Platform[];
   /** Settings-derived gate — only shown when this returns true. */
-  visibleWhen?: (s: FlickySettings | null) => boolean;
+  visibleWhen?: (s: KlipSettings | null) => boolean;
 }
 
 const ROWS: Row[] = [
   {
     kind: 'microphone',
     label: 'Microphone',
-    reason: 'so Flicky can hear you when you push to talk',
+    reason: 'so KLIP can hear you when you push to talk',
     platforms: ['darwin', 'win32'],
   },
   {
     kind: 'screen',
     label: 'Screen Recording',
-    reason: 'so Flicky can see your screen and point at things',
+    reason: 'so KLIP can see your screen and point at things',
     platforms: ['darwin'],
   },
   {
     kind: 'accessibility',
     label: 'Accessibility',
-    reason: 'so Flicky can type into the focused field for you',
+    reason: 'so KLIP can type into the focused field for you',
     platforms: ['darwin'],
     // Only nag the user about this one when they've actually turned
     // on auto-typing. Keeps the banner quiet for users who never
@@ -36,19 +36,19 @@ const ROWS: Row[] = [
   },
 ];
 
-const platform = window.flicky.platform;
+const platform = window.klip.platform;
 const GATED = platform === 'darwin' || platform === 'win32';
 
 export function PermissionsBanner() {
   const [perms, setPerms] = useState<PermissionStatus | null>(null);
-  const [settings, setSettings] = useState<FlickySettings | null>(null);
+  const [settings, setSettings] = useState<KlipSettings | null>(null);
 
   useEffect(() => {
     if (!GATED) return;
-    window.flicky.getPermissions().then(setPerms);
-    window.flicky.getSettings().then(setSettings);
-    const unsubPerms = window.flicky.onPermissionStatus(setPerms);
-    const unsubSettings = window.flicky.onSettingsChanged(setSettings);
+    window.klip.getPermissions().then(setPerms);
+    window.klip.getSettings().then(setSettings);
+    const unsubPerms = window.klip.onPermissionStatus(setPerms);
+    const unsubSettings = window.klip.onSettingsChanged(setSettings);
     return () => {
       unsubPerms();
       unsubSettings();
@@ -71,11 +71,11 @@ export function PermissionsBanner() {
   return (
     <div className="perm-banner">
       <div className="perm-banner-head">
-        <span className="perm-banner-title">Flicky needs a permission</span>
+        <span className="perm-banner-title">KLIP needs a permission</span>
         <span className="perm-banner-sub">
           {isWin
             ? 'Windows blocks desktop apps from the microphone until you allow it under Settings → Privacy & security → Microphone.'
-            : 'macOS controls access per-app. Without these, Flicky can’t hear you, see your screen, or type for you.'}
+            : 'macOS controls access per-app. Without these, KLIP can’t hear you, see your screen, or type for you.'}
         </span>
       </div>
       <div className="perm-banner-rows">
@@ -87,7 +87,7 @@ export function PermissionsBanner() {
             </div>
             <button
               className="perm-banner-btn"
-              onClick={() => window.flicky.requestPermission(r.kind)}
+              onClick={() => window.klip.requestPermission(r.kind)}
             >
               {isWin ? 'Open settings' : 'Grant'}
             </button>

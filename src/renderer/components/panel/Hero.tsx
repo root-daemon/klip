@@ -1,9 +1,9 @@
-import type { FlickySettings, VoiceState } from '../../../shared/types';
+import type { KlipSettings, VoiceState } from '../../../shared/types';
 import { Waveform } from '../Waveform';
 
 interface HeroProps {
   voiceState: VoiceState;
-  settings: FlickySettings;
+  settings: KlipSettings;
 }
 
 export function Hero({ voiceState, settings }: HeroProps) {
@@ -36,7 +36,7 @@ export function Hero({ voiceState, settings }: HeroProps) {
       <div className="hero-top">
         <div className="logo">F</div>
         <div>
-          <div className="brand-name">Flicky</div>
+          <div className="brand-name">KLIP</div>
           <div className="brand-sub">your voice companion</div>
         </div>
         <div className={`state ${stateClass}`}>{stateLabel}</div>

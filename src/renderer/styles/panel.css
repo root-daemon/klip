@@ -61,7 +61,7 @@ body {
   width: 38px; height: 38px;
   display: grid; place-items: center;
   flex-shrink: 0;
-  filter: drop-shadow(0 3px 8px rgba(29, 78, 216, 0.45));
+  filter: drop-shadow(0 3px 8px var(--pet-glow-soft));
 }
 .sidebar-title {
   font-family: 'Geist', system-ui, sans-serif;
@@ -282,6 +282,11 @@ body {
 .provider-logo.eleven { background: #2a2a30; color: #fff; }
 .provider-logo.groq { background: #f55036; color: #fff; }
 .provider-logo.openai { background: #10a37f; color: #fff; font-size: 9px; }
+.provider-logo.gemini {
+  background: linear-gradient(135deg, #4285f4, #9b72cb 55%, #f4b400);
+  color: #fff;
+}
+.provider-logo.sarvam { background: var(--accent-orange); color: #1a1a1a; }
 
 /* Make .provider-pick clickable (it's a <button> now) */
 button.provider-pick {

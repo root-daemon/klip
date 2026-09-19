@@ -61,7 +61,7 @@ export function OllamaManageModal({ conn, onClose, onModelSelected }: OllamaMana
 
   const loadModels = async () => {
     setLoading(true);
-    const list = await window.flicky.getOllamaModels(conn.url, await getBearer());
+    const list = await window.klip.getOllamaModels(conn.url, await getBearer());
     setModels(list);
     setLoading(false);
   };
@@ -70,15 +70,15 @@ export function OllamaManageModal({ conn, onClose, onModelSelected }: OllamaMana
 
   // Wire pull progress events
   useEffect(() => {
-    const offProgress = window.flicky.onOllamaPullProgress((p) => setPullProgress(p));
-    const offComplete = window.flicky.onOllamaPullComplete(({ model }) => {
+    const offProgress = window.klip.onOllamaPullProgress((p) => setPullProgress(p));
+    const offComplete = window.klip.onOllamaPullComplete(({ model }) => {
       setPullState('done');
       setPullTag('');
       void loadModels();
       // Auto-select pulled model
       onModelSelected(model);
     });
-    const offError = window.flicky.onOllamaPullError(({ error }) => {
+    const offError = window.klip.onOllamaPullError(({ error }) => {
       setPullState('error');
       setPullError(error);
     });
@@ -90,7 +90,7 @@ export function OllamaManageModal({ conn, onClose, onModelSelected }: OllamaMana
     setPullState('pulling');
     setPullProgress(null);
     setPullError('');
-    window.flicky.pullOllamaModel(conn.url, tag, undefined);
+    window.klip.pullOllamaModel(conn.url, tag, undefined);
   };
 
   const handleQuickPull = (tag: string) => {
@@ -103,7 +103,7 @@ export function OllamaManageModal({ conn, onClose, onModelSelected }: OllamaMana
     if (!deleteTarget || deleting) return;
     setDeleting(true);
     try {
-      await window.flicky.deleteOllamaModel(conn.url, deleteTarget, undefined);
+      await window.klip.deleteOllamaModel(conn.url, deleteTarget, undefined);
       setDeleteTarget('');
       setDeleteConfirm(false);
       if (conn.activeModelId === deleteTarget) {
@@ -123,7 +123,7 @@ export function OllamaManageModal({ conn, onClose, onModelSelected }: OllamaMana
     setCreating(true);
     setCreateError('');
     try {
-      await window.flicky.createOllamaModel(conn.url, tag, createJson, undefined);
+      await window.klip.createOllamaModel(conn.url, tag, createJson, undefined);
       setCreateTag('');
       setCreateOpen(false);
       await loadModels();
@@ -210,7 +210,7 @@ export function OllamaManageModal({ conn, onClose, onModelSelected }: OllamaMana
                       )}
                       <button
                         className="link-btn"
-                        onClick={() => window.flicky.openExternal(`https://ollama.com/library/${entry.librarySlug}`)}
+                        onClick={() => window.klip.openExternal(`https://ollama.com/library/${entry.librarySlug}`)}
                       >
                         Browse
                       </button>
@@ -280,7 +280,7 @@ export function OllamaManageModal({ conn, onClose, onModelSelected }: OllamaMana
             To browse available models,{' '}
             <button
               className="link-btn"
-              onClick={() => window.flicky.openExternal('https://ollama.com/library')}
+              onClick={() => window.klip.openExternal('https://ollama.com/library')}
             >
               click here
             </button>

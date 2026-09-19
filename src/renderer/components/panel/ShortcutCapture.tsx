@@ -44,9 +44,9 @@ export function ShortcutCapture({ onSave, onCancel }: ShortcutCaptureProps) {
 
   // Suspend the global shortcut while capturing so keys reach the renderer.
   useEffect(() => {
-    window.flicky.suspendPushToTalkShortcut();
+    window.klip.suspendPushToTalkShortcut();
     return () => {
-      window.flicky.resumePushToTalkShortcut();
+      window.klip.resumePushToTalkShortcut();
     };
   }, []);
 

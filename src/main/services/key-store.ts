@@ -20,7 +20,7 @@ import { writeFileAtomic } from './fs-util';
  * The blobs are persisted in a JSON file in the app's userData directory.
  */
 
-const KEY_NAMES = ['anthropic', 'openai', 'elevenlabs', 'groq'] as const;
+const KEY_NAMES = ['anthropic', 'openai', 'gemini', 'elevenlabs', 'sarvam', 'groq'] as const;
 export type NamedApiKey = (typeof KEY_NAMES)[number];
 export type ApiKeyName = NamedApiKey | string;
 
@@ -32,7 +32,7 @@ interface KeyFile {
 }
 
 function getKeyFilePath(): string {
-  return path.join(app.getPath('userData'), 'flicky-keys.json');
+  return path.join(app.getPath('userData'), 'klip-keys.json');
 }
 
 function readKeyFile(): KeyFile {
@@ -119,7 +119,9 @@ export function getKeyStatus(): Record<NamedApiKey, boolean> {
   return {
     anthropic: hasApiKey('anthropic'),
     openai: hasApiKey('openai'),
+    gemini: hasApiKey('gemini'),
     elevenlabs: hasApiKey('elevenlabs'),
+    sarvam: hasApiKey('sarvam'),
     groq: hasApiKey('groq'),
   };
 }

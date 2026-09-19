@@ -20,7 +20,7 @@ async function load(): Promise<NutJs | null> {
   try {
     nutJs = await import('@nut-tree-fork/nut-js');
   } catch (err) {
-    console.error('[Flicky] auto-typer native module unavailable:', err);
+    console.error('[Klip] auto-typer native module unavailable:', err);
     nutJs = null;
   }
   return nutJs;
@@ -38,7 +38,7 @@ export function isAccessibilityGranted(): boolean {
 }
 
 /**
- * Surface the macOS Accessibility prompt and add Flicky to the trust
+ * Surface the macOS Accessibility prompt and add Klip to the trust
  * list. The user still has to enable the checkbox themselves; the OS
  * does not return a granted state until they do, but the dialog gives
  * them the discovery path.
@@ -67,7 +67,7 @@ export async function typeText(text: string): Promise<boolean> {
     await lib.keyboard.type(text);
     return true;
   } catch (err) {
-    console.error('[Flicky] auto-type failed:', err);
+    console.error('[Klip] auto-type failed:', err);
     return false;
   }
 }

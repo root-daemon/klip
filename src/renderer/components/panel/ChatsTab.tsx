@@ -29,28 +29,28 @@ export function ChatsTab() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    window.flicky
+    window.klip
       .getChatHistory()
       .then(setEntries)
-      .catch((err) => console.error('[Flicky] load chat history failed:', err));
+      .catch((err) => console.error('[KLIP] load chat history failed:', err));
 
     const unsubs = [
-      window.flicky.onChatEntryAdded((entry) => {
+      window.klip.onChatEntryAdded((entry) => {
         setEntries((prev) => [...prev, entry]);
         setStreamingUser(null);
         setStreamingAssistant('');
       }),
-      window.flicky.onTranscriptUpdate((t) => {
+      window.klip.onTranscriptUpdate((t) => {
         if (t.text) setStreamingUser(t.text);
       }),
-      window.flicky.onAiResponseChunk((chunk) => {
+      window.klip.onAiResponseChunk((chunk) => {
         setStreamingAssistant((prev) => prev + chunk);
       }),
       // Wipe any orphan streaming state when a session ends without
       // producing an entry (e.g., transcription returned empty or
       // the LLM call errored). A fresh session landing on 'listening'
       // clears the previous turn's scaffolding.
-      window.flicky.onVoiceStateChanged((state) => {
+      window.klip.onVoiceStateChanged((state) => {
         if (state === 'listening') {
           setStreamingUser(null);
           setStreamingAssistant('');
@@ -69,7 +69,7 @@ export function ChatsTab() {
 
   const clearAll = () => {
     if (!confirm('Clear all chat history? This cannot be undone.')) return;
-    window.flicky.clearChatHistory();
+    window.klip.clearChatHistory();
     setEntries([]);
   };
 
@@ -83,7 +83,7 @@ export function ChatsTab() {
             Chats<em>.</em>
           </h1>
           <p className="main-lead" style={{ marginBottom: 0 }}>
-            Everything you and Flicky have said. All stored locally on your machine.
+            Everything you and KLIP have said. All stored locally on your machine.
           </p>
         </div>
         <button className="btn xs" onClick={clearAll} disabled={!entries.length}>

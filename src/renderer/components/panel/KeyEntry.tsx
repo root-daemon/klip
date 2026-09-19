@@ -35,7 +35,7 @@ export function KeyEntry({
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
 
   const commit = () => {
-    window.flicky.setApiKey(name, value.trim());
+    window.klip.setApiKey(name, value.trim());
     setValue('');
     setPhase({ kind: 'idle' });
     onSaved?.();
@@ -45,7 +45,7 @@ export function KeyEntry({
     const v = value.trim();
     if (!v || phase.kind === 'testing') return;
     setPhase({ kind: 'testing' });
-    const res = await window.flicky.validateApiKey(name, v);
+    const res = await window.klip.validateApiKey(name, v);
     if (res.ok) {
       commit();
     } else {

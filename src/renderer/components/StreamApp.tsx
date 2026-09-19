@@ -39,7 +39,7 @@ export function StreamApp() {
     let cancelled = false;
     (async () => {
       try {
-        const history = await window.flicky.getChatHistory();
+        const history = await window.klip.getChatHistory();
         if (cancelled) return;
         setTurns(
           history.map((h: ChatEntry) => ({
@@ -59,9 +59,9 @@ export function StreamApp() {
   }, []);
 
   useEffect(() => {
-    const unsubState = window.flicky.onVoiceStateChanged(setVoiceState);
+    const unsubState = window.klip.onVoiceStateChanged(setVoiceState);
 
-    const unsubTranscript = window.flicky.onTranscriptUpdate((result: TranscriptionResult) => {
+    const unsubTranscript = window.klip.onTranscriptUpdate((result: TranscriptionResult) => {
       // A final transcript marks the start of a new turn — seed it with
       // the user text and an empty AI body the chunks will append to.
       if (!result.isFinal) return;
@@ -73,7 +73,7 @@ export function StreamApp() {
       ]);
     });
 
-    const unsubChunk = window.flicky.onAiResponseChunk((chunk: string) => {
+    const unsubChunk = window.klip.onAiResponseChunk((chunk: string) => {
       const id = currentIdRef.current;
       if (!id) return;
       setTurns((prev) =>
@@ -81,7 +81,7 @@ export function StreamApp() {
       );
     });
 
-    const unsubComplete = window.flicky.onAiResponseComplete((fullText: string) => {
+    const unsubComplete = window.klip.onAiResponseComplete((fullText: string) => {
       const id = currentIdRef.current;
       if (!id) return;
       setTurns((prev) =>
@@ -92,12 +92,12 @@ export function StreamApp() {
       currentIdRef.current = null;
     });
 
-    const unsubWalkthrough = window.flicky.onWalkthrough((w) => {
+    const unsubWalkthrough = window.klip.onWalkthrough((w) => {
       setWalkthrough(w);
       if (!w) setActiveStep(null);
     });
 
-    const unsubWalkthroughStep = window.flicky.onWalkthroughStep((i) => {
+    const unsubWalkthroughStep = window.klip.onWalkthroughStep((i) => {
       setActiveStep(i);
     });
 
@@ -140,7 +140,7 @@ export function StreamApp() {
   return (
     <div className="stream-root">
       <div className="stream-head">
-        <span className="title">Flicky · {statusLabel}</span>
+        <span className="title">KLIP · {statusLabel}</span>
         <button
           className="btn"
           title="Clear the on-screen stream (chat history is untouched)"
@@ -195,7 +195,7 @@ export function StreamApp() {
               <div className="stream-label">You</div>
               <div className="stream-user">{t.user}</div>
               <div className="stream-label" style={{ marginTop: 6 }}>
-                Flicky
+                KLIP
               </div>
               <div className="stream-ai">
                 {t.ai}

@@ -38,7 +38,7 @@ export function AddConnectionModal({ existing, onSave, onClose, onDelete }: AddC
     setVerifyResult(null);
     try {
       const token = bearerEnabled && bearerToken.trim() ? bearerToken.trim() : undefined;
-      const result = await window.flicky.testLocalConnection(url.trim(), token);
+      const result = await window.klip.testLocalConnection(url.trim(), token);
       setVerifyResult(result);
       setVerifyState(result.ok ? 'ok' : 'error');
     } catch {
@@ -79,17 +79,17 @@ export function AddConnectionModal({ existing, onSave, onClose, onDelete }: AddC
     };
 
     if (existing?.id) {
-      await window.flicky.updateLocalConnection(existing.id, conn);
+      await window.klip.updateLocalConnection(existing.id, conn);
       if (bearerEnabled && bearerToken.trim()) {
-        await window.flicky.setLocalConnectionKey(existing.id, bearerToken.trim());
+        await window.klip.setLocalConnectionKey(existing.id, bearerToken.trim());
       } else if (!bearerEnabled) {
-        await window.flicky.deleteLocalConnectionKey(existing.id);
+        await window.klip.deleteLocalConnectionKey(existing.id);
       }
       onSave({ ...conn, id: existing.id });
     } else {
-      const saved = await window.flicky.addLocalConnection(conn);
+      const saved = await window.klip.addLocalConnection(conn);
       if (bearerEnabled && bearerToken.trim()) {
-        await window.flicky.setLocalConnectionKey(saved.id, bearerToken.trim());
+        await window.klip.setLocalConnectionKey(saved.id, bearerToken.trim());
       }
       onSave(saved);
     }

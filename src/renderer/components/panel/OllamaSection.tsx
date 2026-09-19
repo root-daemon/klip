@@ -16,7 +16,7 @@ export function OllamaSection({ ollamaEnabled, onToggleOllama }: OllamaSectionPr
   const [managing, setManaging] = useState<LocalConnection | undefined>(undefined);
 
   const reload = useCallback(async () => {
-    const conns = await window.flicky.getLocalConnections();
+    const conns = await window.klip.getLocalConnections();
     setConnections(conns);
   }, []);
 
@@ -27,9 +27,9 @@ export function OllamaSection({ ollamaEnabled, onToggleOllama }: OllamaSectionPr
     setEditing(undefined);
     await reload();
     // If this is the first connection, switch model provider to ollama
-    const all = await window.flicky.getLocalConnections();
+    const all = await window.klip.getLocalConnections();
     if (all.length === 1) {
-      window.flicky.setMindProvider('ollama');
+      window.klip.setMindProvider('ollama');
     }
   };
 
@@ -43,20 +43,20 @@ export function OllamaSection({ ollamaEnabled, onToggleOllama }: OllamaSectionPr
   };
 
   const handleModelSelected = async (connId: string, modelId: string) => {
-    await window.flicky.updateLocalConnection(connId, { activeModelId: modelId || undefined });
+    await window.klip.updateLocalConnection(connId, { activeModelId: modelId || undefined });
     await reload();
     // Reflect updated conn in the manage modal
-    const updated = (await window.flicky.getLocalConnections()).find((c) => c.id === connId);
+    const updated = (await window.klip.getLocalConnections()).find((c) => c.id === connId);
     if (updated) setManaging(updated);
   };
 
   const handleToggle = async (conn: LocalConnection) => {
-    await window.flicky.updateLocalConnection(conn.id, { enabled: !conn.enabled });
+    await window.klip.updateLocalConnection(conn.id, { enabled: !conn.enabled });
     await reload();
   };
 
   const handleDelete = async (conn: LocalConnection) => {
-    await window.flicky.deleteLocalConnection(conn.id);
+    await window.klip.deleteLocalConnection(conn.id);
     setShowModal(false);
     setEditing(undefined);
     await reload();

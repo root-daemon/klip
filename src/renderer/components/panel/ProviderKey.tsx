@@ -27,7 +27,7 @@ export function ProviderKey({
   hideProviderHeader,
 }: ProviderKeyProps) {
   const [editing, setEditing] = useState(false);
-  const remove = () => window.flicky.deleteApiKey(name);
+  const remove = () => window.klip.deleteApiKey(name);
 
   return (
     <>

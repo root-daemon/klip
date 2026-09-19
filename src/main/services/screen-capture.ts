@@ -24,7 +24,7 @@ export async function captureDisplays(
   // very first call shortly after app launch — the capture pipeline
   // hasn't warmed up yet. A single short-delayed retry reliably hands
   // back populated thumbnails without bothering the user.
-  console.warn('[Flicky] capture returned zero on first try; retrying after 300ms');
+  console.warn('[Klip] capture returned zero on first try; retrying after 300ms');
   await new Promise((r) => setTimeout(r, 300));
   return captureOnce(opts);
 }
@@ -56,7 +56,7 @@ async function captureOnce(
       displays = onCursor;
     } else {
       console.warn(
-        '[Flicky] cursor-only filter excluded every display ' +
+        '[Klip] cursor-only filter excluded every display ' +
         `(cursor at ${cursorPoint.x},${cursorPoint.y}, ` +
         `displays: ${allDisplays.map((d) => `${d.id}@${JSON.stringify(d.bounds)}`).join(' ')}). ` +
         'Falling back to all displays.',
@@ -80,7 +80,7 @@ async function captureOnce(
     }) ?? sources[captures.length]; // Fallback to index-based matching
 
     if (!source) {
-      console.warn(`[Flicky] no source matched display ${display.id}`);
+      console.warn(`[Klip] no source matched display ${display.id}`);
       continue;
     }
 
@@ -112,7 +112,7 @@ async function captureOnce(
     // were rejecting valid thumbnails on some macOS configurations.
     if (jpegBuffer.length === 0) {
       console.warn(
-        `[Flicky] display ${display.id}: JPEG encoded to 0 bytes ` +
+        `[Klip] display ${display.id}: JPEG encoded to 0 bytes ` +
         `(thumbSize=${size.width}x${size.height}, target=${targetWidth}x${targetHeight}, ` +
         `scaleFactor=${scaleFactor}); skipping`,
       );
@@ -142,7 +142,7 @@ async function captureOnce(
 
   if (captures.length === 0) {
     console.warn(
-      '[Flicky] captureDisplays produced zero screenshots. ' +
+      '[Klip] captureDisplays produced zero screenshots. ' +
       `displays=${displays.length}, sources=${sources.length}, ` +
       `sourceIds=[${sources.map((s) => s.display_id || '""').join(',')}], ` +
       `displayIds=[${displays.map((d) => d.id).join(',')}]`,

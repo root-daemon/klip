@@ -52,7 +52,7 @@ export class OpenAIAPI {
   ): Promise<void> {
     const apiKey = getApiKey('openai');
     if (!apiKey) {
-      callbacks.onError(new Error('OpenAI API key not configured. Add it in the Flicky panel.'));
+      callbacks.onError(new Error('OpenAI API key not configured. Add it in the Klip panel.'));
       return;
     }
 

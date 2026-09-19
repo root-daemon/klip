@@ -14,9 +14,9 @@ export function initAnalytics(apiKey: string, host: string): void {
   if (!apiKey) return;
   void import('posthog-node').then(({ PostHog }) => {
     client = new PostHog(apiKey, { host });
-    distinctId = `flicky-${Date.now()}`;
+    distinctId = `klip-${Date.now()}`;
   }).catch((err) => {
-    console.error('[Flicky] analytics init failed:', err);
+    console.error('[Klip] analytics init failed:', err);
   });
 }
 

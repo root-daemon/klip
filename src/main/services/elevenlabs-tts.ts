@@ -18,7 +18,7 @@ export class ElevenLabsTTS {
   async synthesize(text: string, options: TtsOptions): Promise<Buffer> {
     const apiKey = getApiKey('elevenlabs');
     if (!apiKey) {
-      throw new Error('ElevenLabs API key not configured. Add it in the Flicky panel.');
+      throw new Error('ElevenLabs API key not configured. Add it in the Klip panel.');
     }
 
     const response = await fetch(`${ELEVENLABS_API_URL}/${options.voiceId}`, {

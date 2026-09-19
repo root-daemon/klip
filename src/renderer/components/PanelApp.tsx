@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { VoiceState, FlickySettings, MemoryStats } from '../../shared/types';
+import type { VoiceState, KlipSettings, MemoryStats } from '../../shared/types';
 import { HomeTab } from './panel/HomeTab';
 import { ChatsTab } from './panel/ChatsTab';
 import { MindTab } from './panel/MindTab';
@@ -14,26 +14,26 @@ type Tab = 'home' | 'chats' | 'mind' | 'voice' | 'ear' | 'general';
 
 export function PanelApp() {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
-  const [settings, setSettings] = useState<FlickySettings | null>(null);
+  const [settings, setSettings] = useState<KlipSettings | null>(null);
   const [memory, setMemory] = useState<MemoryStats | null>(null);
   const [tab, setTab] = useState<Tab>('home');
   const [version, setVersion] = useState('');
   const [lastError, setLastError] = useState<string | null>(null);
 
   useEffect(() => {
-    window.flicky.getSettings().then(setSettings);
-    window.flicky.getMemoryStats().then(setMemory);
-    window.flicky.getAppVersion().then(setVersion).catch(() => {});
+    window.klip.getSettings().then(setSettings);
+    window.klip.getMemoryStats().then(setMemory);
+    window.klip.getAppVersion().then(setVersion).catch(() => {});
 
     let errTimer: ReturnType<typeof setTimeout> | null = null;
     const unsubs = [
-      window.flicky.onVoiceStateChanged(setVoiceState),
-      window.flicky.onSettingsChanged(setSettings),
-      window.flicky.onMemoryStats(setMemory),
+      window.klip.onVoiceStateChanged(setVoiceState),
+      window.klip.onSettingsChanged(setSettings),
+      window.klip.onMemoryStats(setMemory),
       // Turn failures used to vanish into the main-process console. Show
       // them in a dismissable strip so "nothing happened" becomes "here's
       // why nothing happened".
-      window.flicky.onAiError((m) => {
+      window.klip.onAiError((m) => {
         setLastError(m);
         if (errTimer) clearTimeout(errTimer);
         errTimer = setTimeout(() => setLastError(null), 12_000);
@@ -80,7 +80,7 @@ export function PanelApp() {
           <div className="sidebar-logo">
             <CursorIcon size={34} />
           </div>
-          <div className="sidebar-title">Flicky</div>
+          <div className="sidebar-title">KLIP</div>
         </div>
 
         <nav className="nav">
@@ -97,7 +97,7 @@ export function PanelApp() {
         </nav>
 
         <div className="sidebar-foot">
-          <button className="nav-item quit" onClick={() => window.flicky.quit()}>
+          <button className="nav-item quit" onClick={() => window.klip.quit()}>
             <span className="label">Quit</span>
           </button>
           <div className="sidebar-version">{version ? `v${version}` : ''}</div>

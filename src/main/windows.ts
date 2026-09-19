@@ -11,16 +11,16 @@ function getPreloadPath(): string {
 function loadPage(win: BrowserWindow, page: string): void {
   if (isDev) {
     const url = `http://localhost:5173/${page}.html`;
-    console.log(`[Flicky] Loading ${page} from dev server: ${url}`);
+    console.log(`[Klip] Loading ${page} from dev server: ${url}`);
     win.loadURL(url);
   } else {
     const filePath = path.join(__dirname, '../../renderer', `${page}.html`);
-    console.log(`[Flicky] Loading ${page} from file: ${filePath}`);
+    console.log(`[Klip] Loading ${page} from file: ${filePath}`);
     win.loadFile(filePath);
   }
 }
 
-/** The main Flicky app window (settings + status). */
+/** The main Klip app window (settings + status). */
 export function createPanelWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 960,
@@ -38,7 +38,7 @@ export function createPanelWindow(): BrowserWindow {
     skipTaskbar: false,
     transparent: false,
     backgroundColor: '#0f0f11',
-    title: 'Flicky',
+    title: 'KLIP',
     // Windows/Linux otherwise show Electron's stock "File Edit View
     // Window Help" bar above the panel. Alt still reveals it.
     autoHideMenuBar: true,
@@ -71,7 +71,9 @@ function toDisplayInfo(display: Display): DisplayInfo {
   return {
     id: display.id,
     bounds: display.bounds,
+    workArea: display.workArea,
     scaleFactor: display.scaleFactor,
+    isPrimary: display.id === screen.getPrimaryDisplay().id,
   };
 }
 
@@ -177,7 +179,7 @@ export function createStreamWindow(
     alwaysOnTop: true,
     hasShadow: false,
     focusable: true,
-    title: 'Flicky Stream',
+    title: 'KLIP Stream',
     webPreferences: {
       preload: getPreloadPath(),
       contextIsolation: true,

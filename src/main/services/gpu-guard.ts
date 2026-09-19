@@ -86,7 +86,7 @@ function writeState(state: GpuState): void {
     // it's diagnosable rather than invisible.
     if (!writeErrorLogged) {
       writeErrorLogged = true;
-      console.error('[Flicky] Could not persist GPU crash state:', err);
+      console.error('[Klip] Could not persist GPU crash state:', err);
     }
   }
 }
@@ -116,14 +116,14 @@ export function initGpuGuard(): void {
   const forced = process.env.FLICKY_DISABLE_GPU;
   if (forced === '1' || forced === '2') {
     activeTier = Number(forced);
-    console.log(`[Flicky] FLICKY_DISABLE_GPU=${forced} — starting at GPU fallback tier ${activeTier}.`);
+    console.log(`[Klip] FLICKY_DISABLE_GPU=${forced} — starting at GPU fallback tier ${activeTier}.`);
     applyTier(activeTier);
   } else {
     const { crashes } = readState();
     activeTier = tierFor(crashes);
     if (activeTier > 0) {
       console.log(
-        `[Flicky] GPU process failed ${crashes} time(s) on previous runs — ` +
+        `[Klip] GPU process failed ${crashes} time(s) on previous runs — ` +
           `starting at fallback tier ${activeTier}. Delete gpu-state.json in the ` +
           'app data directory to retry hardware acceleration.',
       );
@@ -139,7 +139,7 @@ export function initGpuGuard(): void {
     const next = readState().crashes + 1;
     writeState({ crashes: next });
     console.error(
-      `[Flicky] GPU process gone (reason=${details.reason}, ` +
+      `[Klip] GPU process gone (reason=${details.reason}, ` +
         `exitCode=${details.exitCode}). Failure count is now ${next}` +
         (tierFor(next) > activeTier ? `; tier ${tierFor(next)} will apply on next launch.` : '.'),
     );
@@ -163,7 +163,7 @@ export function confirmGpuHealthy(): void {
     // count has to survive so repeated failures still add up.
     if (crashedThisRun) return;
     if (readState().crashes === 0) return;
-    console.log('[Flicky] GPU has been stable this run — clearing the failure counter.');
+    console.log('[Klip] GPU has been stable this run — clearing the failure counter.');
     writeState({ crashes: 0 });
   }, HEALTHY_UPTIME_MS).unref?.();
 }

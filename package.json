@@ -1,11 +1,11 @@
 {
-  "name": "flicky",
+  "name": "klip",
   "version": "1.2.1",
-  "description": "Cross-platform AI companion — voice-driven, screen-aware assistant with a pointing cursor overlay",
+  "description": "KLIP — a voice-driven, screen-aware desktop companion with a living pet character, Gemini reasoning, and ElevenLabs/Sarvam voice",
   "main": "dist/main/main/index.js",
   "author": {
-    "name": "Flicky Contributors",
-    "email": "noreply@flicky.app"
+    "name": "Klip Contributors",
+    "email": "noreply@klip.app"
   },
   "license": "MIT",
   "scripts": {
@@ -15,7 +15,7 @@
     "build": "npm run build:main && npm run build:renderer",
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build",
-    "start": "VITE_DEV_SERVER=1 electron dist/main/main/index.js",
+    "start": "cross-env VITE_DEV_SERVER=1 electron dist/main/main/index.js",
     "start:prod": "electron dist/main/main/index.js",
     "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@nut-tree-fork/nut-js": "^4.2.6",
+    "framer-motion": "^11.18.2",
     "posthog-node": "^4.0.0"
   },
   "devDependencies": {
@@ -37,6 +38,7 @@
     "@typescript-eslint/parser": "^8.0.0",
     "@vitejs/plugin-react": "^4.3.0",
     "concurrently": "^9.0.0",
+    "cross-env": "^10.1.0",
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0",
     "eslint": "^9.0.0",
@@ -47,8 +49,8 @@
     "vite-plugin-electron": "^0.28.0"
   },
   "build": {
-    "appId": "com.flicky.app",
-    "productName": "Flicky",
+    "appId": "com.klip.app",
+    "productName": "KLIP",
     "directories": {
       "output": "release",
       "buildResources": "assets"
@@ -63,11 +65,17 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "hardenedRuntime": true,
@@ -76,8 +84,8 @@
       "entitlements": "assets/entitlements.mac.plist",
       "entitlementsInherit": "assets/entitlements.mac.plist",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Flicky needs microphone access for voice commands.",
-        "NSScreenCaptureUsageDescription": "Flicky captures your screen to provide context-aware AI assistance."
+        "NSMicrophoneUsageDescription": "KLIP needs microphone access for voice commands.",
+        "NSScreenCaptureUsageDescription": "KLIP captures your screen to provide context-aware AI assistance."
       }
     },
     "win": {
@@ -85,7 +93,10 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ]
     },
@@ -97,13 +108,11 @@
     },
     "linux": {
       "icon": "assets/icons",
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Utility"
-    },
-    "publish": {
-      "provider": "github",
-      "owner": "jvaught01",
-      "repo": "flicky"
     }
   }
 }

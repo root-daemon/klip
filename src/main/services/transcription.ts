@@ -1,6 +1,8 @@
 import type { TranscriptionResult, TranscriptionProviderType } from '../../shared/types';
 import { getApiKey } from './key-store';
 import * as settingsStore from './settings-store';
+import { buildWav } from './audio-util';
+import { SarvamSttProvider } from './sarvam-stt';
 
 // ── Provider Interface ─────────────────────────────────────────────────
 
@@ -19,7 +21,7 @@ export class GroqWhisperProvider implements TranscriptionProvider {
 
   async start(): Promise<void> {
     const apiKey = getApiKey('groq');
-    if (!apiKey) throw new Error('Groq API key not configured. Add it in the Flicky panel.');
+    if (!apiKey) throw new Error('Groq API key not configured. Add it in the Klip panel.');
     this.audioChunks = [];
   }
 
@@ -61,7 +63,7 @@ export class GroqWhisperProvider implements TranscriptionProvider {
     // tokens here; keep it short and dense.
     formData.append(
       'prompt',
-      "Flicky, click, tap, open, close, switch, highlight, select, search, paste, file, folder, window, tab, button, link, screen, cursor, Slack, Chrome, Notion, VS Code, Figma, Gmail.",
+      "Klip, click, tap, open, close, switch, highlight, select, search, paste, file, folder, window, tab, button, link, screen, cursor, Slack, Chrome, Notion, VS Code, Figma, Gmail.",
     );
 
     const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
@@ -87,7 +89,7 @@ export class OpenAIWhisperProvider implements TranscriptionProvider {
 
   async start(): Promise<void> {
     const apiKey = getApiKey('openai');
-    if (!apiKey) throw new Error('OpenAI API key not configured. Add it in the Flicky panel.');
+    if (!apiKey) throw new Error('OpenAI API key not configured. Add it in the Klip panel.');
     this.audioChunks = [];
   }
 
@@ -131,39 +133,11 @@ export function createTranscriptionProvider(
       return new GroqWhisperProvider();
     case 'openai':
       return new OpenAIWhisperProvider();
+    case 'sarvam':
+      return new SarvamSttProvider();
     case 'native':
     default:
       // Fall back to Groq for unknown/legacy provider values (e.g. 'assemblyai').
       return new GroqWhisperProvider();
   }
-}
-
-// ── WAV Builder ────────────────────────────────────────────────────────
-
-function buildWav(pcmData: Buffer, sampleRate: number, channels: number, bitsPerSample: number): Buffer {
-  const byteRate = (sampleRate * channels * bitsPerSample) / 8;
-  const blockAlign = (channels * bitsPerSample) / 8;
-  const dataSize = pcmData.length;
-  const headerSize = 44;
-
-  const buffer = Buffer.alloc(headerSize + dataSize);
-
-  buffer.write('RIFF', 0);
-  buffer.writeUInt32LE(headerSize - 8 + dataSize, 4);
-  buffer.write('WAVE', 8);
-
-  buffer.write('fmt ', 12);
-  buffer.writeUInt32LE(16, 16);
-  buffer.writeUInt16LE(1, 20);
-  buffer.writeUInt16LE(channels, 22);
-  buffer.writeUInt32LE(sampleRate, 24);
-  buffer.writeUInt32LE(byteRate, 28);
-  buffer.writeUInt16LE(blockAlign, 32);
-  buffer.writeUInt16LE(bitsPerSample, 34);
-
-  buffer.write('data', 36);
-  buffer.writeUInt32LE(dataSize, 40);
-  pcmData.copy(buffer, headerSize);
-
-  return buffer;
 }

@@ -11,7 +11,7 @@ interface WaveformProps {
 
 /**
  * Hero-style animated waveform used both in the panel hero and in the
- * overlay while Flicky is listening. Pure CSS animation keyed off
+ * overlay while KLIP is listening. Pure CSS animation keyed off
  * --wf-state on the root so appearance follows voice state.
  */
 export function Waveform({ state, bars = 19, height = 42, className }: WaveformProps) {

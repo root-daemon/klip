@@ -46,10 +46,30 @@ const PROBES: Record<ApiKeyName, (key: string) => Probe> = {
       messages: [{ role: 'user', content: 'hi' }],
     }),
   }),
+  gemini: (key) => ({
+    url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${key}`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: 'hi' }] }],
+      generationConfig: { maxOutputTokens: 1 },
+    }),
+  }),
   elevenlabs: (key) => ({
     url: 'https://api.elevenlabs.io/v1/user',
     method: 'GET',
     headers: { 'xi-api-key': key },
+  }),
+  sarvam: (key) => ({
+    url: 'https://api.sarvam.ai/text-to-speech',
+    method: 'POST',
+    headers: { 'api-subscription-key': key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text: 'hi',
+      target_language_code: 'en-IN',
+      speaker: 'anushka',
+      model: 'bulbul:v2',
+    }),
   }),
   groq: (key) => ({
     url: 'https://api.groq.com/openai/v1/models',

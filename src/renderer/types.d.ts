@@ -1,8 +1,8 @@
-import type { FlickyAPI } from '../preload/index';
+import type { KlipAPI } from '../preload/index';
 
 declare global {
   interface Window {
-    flicky: FlickyAPI;
+    klip: KlipAPI;
   }
 }
 

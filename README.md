@@ -1,26 +1,27 @@
-# Flicky
+# KLIP
 
-A voice-driven, screen-aware AI companion that lives in the corner of your screen. Hold a hotkey, talk to it, and a little blue cursor flies across your display to point at whatever it's referring to.
+A voice-driven, screen-aware AI companion that lives in the corner of your screen. Hold a hotkey, talk to it, and a small glowing pet glides across your display to point at whatever it's referring to.
 
 > **Inspired by [Clicky](https://www.clicky.so/)** by [Farza](https://github.com/farzaa) ([github.com/farzaa/clicky](https://github.com/farzaa/clicky)).
-> Clicky is the original idea — a macOS-only Swift app. Flicky is an independent reimagining built from scratch in Electron so the same experience can run on **Windows, macOS, and Linux**. All credit for the original concept, the pointing-cursor interaction, and the "vibe" goes to Farza. If you're on a Mac, go check out the original — it's great.
+> Clicky is the original idea — a macOS-only Swift app. KLIP is an independent reimagining built from scratch in Electron so the same experience can run on **Windows, macOS, and Linux**. All credit for the original concept, the pointing-cursor interaction, and the "vibe" goes to Farza. If you're on a Mac, go check out the original — it's great.
 
 ---
 
-## What Flicky adds on top of the original idea
+## What KLIP adds on top of the original idea
 
+- **A living pet character** — a circular, glowing companion with no mouth and two capsule eyes that blink, look around, and react (idle / listening / thinking / speaking / success / error) through a real emotion state machine, animated with Framer Motion.
 - **Cross-platform** — Windows, macOS, and Linux from a single Electron codebase.
-- **A second reasoning provider** — pick between **Anthropic Claude** (Opus / Sonnet 4.6) and **OpenAI** (GPT-5, GPT-5 mini, GPT-4o) on the fly.
-- **More ElevenLabs voices** — full voice catalog, plus per-voice speed and stability sliders.
+- **Three reasoning providers** — pick between **Anthropic Claude** (Sonnet / Opus 4.6), **OpenAI** (GPT-5, GPT-5 mini, GPT-4o), and **Google Gemini** (2.5 Pro / Flash, with Google Search grounding) on the fly.
+- **Two voice (TTS) providers** — **ElevenLabs**' full voice catalog with speed/stability tuning, or **Sarvam AI**'s Bulbul v2 speakers for strong multilingual and Indian-language output.
+- **Two transcription (STT) providers** — **Groq** Whisper (fast, English-tuned) or **Sarvam AI** Saarika v2.5 (auto language detection, strong on Indian and code-switched speech).
 - **Local chat history** — every conversation is stored on your machine, browsable from the panel, never uploaded.
 - **Long-running context management** — auto-compacts older messages into a summary near a configurable token budget so a single conversation can run forever without blowing up the context window.
 - **Customizable push-to-talk shortcut** — capture any key combination from the UI; the global shortcut re-registers live.
-- **Three transcription options** — Groq Whisper Large v3 / v3 Turbo with one-click switching.
-- **Multiple reasoning depths** — off / low / medium / high "extended thinking" toggle.
-- **Multi-display aware overlay** — the blue cursor follows your real mouse across monitors.
+- **Multiple reasoning depths** — off / medium / deep "extended thinking" toggle.
+- **Multi-display aware overlay** — the pet follows your real mouse across monitors.
 - **Provider key management** — separate, encrypted local storage for each provider's API key with one-click validation.
 
-The core loop — hold the hotkey, ask anything, see the blue cursor point — is faithful to Farza's original.
+The core loop — hold the hotkey, ask anything, watch the pet point — is faithful to Farza's original.
 
 ---
 
@@ -52,16 +53,16 @@ Releases are also produced automatically by GitHub Actions on every `v*` tag —
 
 ## Configuration
 
-You'll need API keys for the providers you want to use:
+You'll need API keys for the providers you want to use — everything is added and validated live inside the app, either during first-run setup or later from the panel:
 
-- **Anthropic** or **OpenAI** — reasoning
-- **ElevenLabs** — text-to-speech
-- **Groq** — speech-to-text
+- **Mind (reasoning)** — Anthropic, OpenAI, or Gemini
+- **Voice (text-to-speech)** — ElevenLabs or Sarvam AI
+- **Ear (speech-to-text)** — Groq or Sarvam AI
 
-Add them in the panel under **Mind**, **Voice**, and **Ear**. Keys are stored locally with platform-appropriate encryption — they never leave your machine except in API calls to the relevant provider.
+Keys are stored locally with platform-appropriate encryption (Windows DPAPI / macOS Keychain / Linux libsecret via Electron's `safeStorage`) — they never leave your machine except in API calls to the relevant provider.
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
 
-The original Clicky project is the intellectual seed for this work; Flicky is an independent implementation and does not bundle or redistribute Clicky's source. If you like what's here, please also star [Farza's repo](https://github.com/farzaa/clicky).
+The original Clicky project is the intellectual seed for this work; KLIP is an independent implementation and does not bundle or redistribute Clicky's source. If you like what's here, please also star [Farza's repo](https://github.com/farzaa/clicky).

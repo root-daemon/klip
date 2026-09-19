@@ -1,30 +1,34 @@
-/* ── Flicky Design System ───────────────────────────────────────────────
- * Ported from DesignSystem.swift — dark theme, Tailwind Blue accent.
+/* ── KLIP Design System ───────────────────────────────────────────────
+ * Near-black surfaces, warm amber/orange accent pair, large soft radii.
  * ──────────────────────────────────────────────────────────────────── */
 
 :root {
   /* ── Background layers (darkest → lightest) ─────────────────────── */
-  --bg-deepest:  #101211;
-  --bg-base:     #171918;
-  --bg-raised:   #202221;
-  --bg-elevated: #272A29;
-  --bg-surface:  #2E3130;
+  --bg-deepest:  #08090a;
+  --bg-base:     #0f1011;
+  --bg-raised:   #17181b;
+  --bg-elevated: #1e2023;
+  --bg-surface:  #26282c;
 
   /* ── Borders ────────────────────────────────────────────────────── */
-  --border-subtle: #373B39;
-  --border-strong: #444947;
+  --border-subtle: #2a2c30;
+  --border-strong: #3c3f45;
 
   /* ── Text ───────────────────────────────────────────────────────── */
-  --text-primary:   #ECEEED;
-  --text-secondary: #ADB5B2;
-  --text-tertiary:  #6B736F;
+  --text-primary:   #f6f6f4;
+  --text-secondary: #a8acb3;
+  --text-tertiary:  #6c7078;
 
-  /* ── Accent (Tailwind Blue 600 / 700) ───────────────────────────── */
-  --accent:       #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-muted: rgba(37, 99, 235, 0.15);
+  /* ── Accent (warm amber) ───────────────────────────────────────── */
+  --accent:       #ffb020;
+  --accent-hover: #ffc14d;
+  --accent-muted: rgba(255, 176, 32, 0.16);
 
-  /* ── Blue scale ─────────────────────────────────────────────────── */
+  /* ── Brand pair — pulled from the KLIP visual identity ──────────── */
+  --accent-yellow: #f4e409;
+  --accent-orange: #ff7a33;
+
+  /* ── Blue scale (kept as a neutral "info" scale, independent of brand accent) ── */
   --blue-50:  #eff6ff;
   --blue-100: #dbeafe;
   --blue-200: #bfdbfe;
@@ -38,18 +42,24 @@
   --blue-950: #172554;
 
   /* ── Semantic ───────────────────────────────────────────────────── */
-  --success:     #34D399;
-  --warning:     #FFB224;
-  --destructive: #E5484D;
+  --success:     #34d399;
+  --warning:     #ffb224;
+  --destructive: #ff5c5c;
 
-  /* ── Overlay cursor ─────────────────────────────────────────────── */
-  --cursor-blue: #3380FF;
+  /* ── Pet (overlay companion) ──────────────────────────────────────
+   * --cursor-blue is kept as a compatibility alias — some older styles
+   * may still reference it. New styles should use --pet-glow directly. */
+  --pet-body:      #1a1b1e;
+  --pet-body-hi:   #313339;
+  --pet-glow:      #ffc75f;
+  --pet-glow-soft: rgba(255, 199, 95, 0.35);
+  --cursor-blue:   var(--pet-glow);
 
   /* ── Radius ─────────────────────────────────────────────────────── */
-  --radius-sm:  6px;
-  --radius-md:  8px;
-  --radius-lg:  10px;
-  --radius-xl:  12px;
+  --radius-sm:  8px;
+  --radius-md:  12px;
+  --radius-lg:  16px;
+  --radius-xl:  22px;
 
   /* ── Spacing ────────────────────────────────────────────────────── */
   --space-xs:   4px;
@@ -61,8 +71,8 @@
   --space-3xl:  32px;
 
   /* ── Typography ─────────────────────────────────────────────────── */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  --font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  --font-sans: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --font-mono: 'Cascadia Code', 'SF Mono', 'Fira Code', monospace;
 }
 
 /* ── Reset ──────────────────────────────────────────────────────────── */

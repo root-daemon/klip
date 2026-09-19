@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { VoiceState, WalkthroughStep, TypeRequest, DisplayInfo } from '../../shared/types';
 import { Waveform } from './Waveform';
+import { KlipPet, type PetMood } from './KlipPet';
 
 // Vite resolves `new URL(..., import.meta.url)` at build time and emits
 // the worklet as a static asset. The `.js` file is hand-written plain
@@ -8,10 +9,24 @@ import { Waveform } from './Waveform';
 // we only need its URL to feed `audioWorklet.addModule()`.
 const captureWorkletUrl = new URL('../audio-capture-worklet.js', import.meta.url).href;
 
-// Offset the companion cursor ~1/5 inch (≈19px at 96dpi) down-right
-// of the real mouse so the tip doesn't sit directly on top of it.
-const FOLLOW_OFFSET_X = 14;
-const FOLLOW_OFFSET_Y = 8;
+// KLIP docks in the bottom-right corner of the primary display's work
+// area (i.e. above the taskbar), like the original product spec — it
+// no longer chases the real mouse cursor around. `companionPos`
+// represents the pet's visual *center* (the wrapping div is negatively
+// margined by half its size), so the dock target is inset from the
+// corner by margin + radius.
+const PET_RADIUS = 20;
+const DOCK_MARGIN = 24;
+
+function computeDockPos(info: DisplayInfo | null): { x: number; y: number } {
+  if (!info) return { x: 0, y: 0 };
+  const localRight = info.workArea.x - info.bounds.x + info.workArea.width;
+  const localBottom = info.workArea.y - info.bounds.y + info.workArea.height;
+  return {
+    x: localRight - DOCK_MARGIN - PET_RADIUS,
+    y: localBottom - DOCK_MARGIN - PET_RADIUS,
+  };
+}
 
 const POINTING_PHRASES = [
   'right here!',
@@ -32,7 +47,6 @@ type CursorMode = 'following' | 'navigating' | 'holding' | 'returning';
 
 export function OverlayApp() {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
-  const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
   const [currentStep, setCurrentStep] = useState<WalkthroughStep | null>(null);
   const [pointingPhrase, setPointingPhrase] = useState('');
   const [cursorMode, setCursorMode] = useState<CursorMode>('following');
@@ -40,14 +54,32 @@ export function OverlayApp() {
   const [isCursorOnThisDisplay, setIsCursorOnThisDisplay] = useState(false);
   const [typeToast, setTypeToast] = useState<TypeRequest | null>(null);
   const typeToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A brief happy/concerned reaction overrides the base voice-state mood
+  // right when a turn lands — the pet blinks success or flinches error,
+  // then settles back into whatever voiceState says next.
+  const [reactionPulse, setReactionPulse] = useState<'success' | 'error' | null>(null);
+  const reactionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const triggerReaction = useCallback((kind: 'success' | 'error') => {
+    if (reactionTimerRef.current) clearTimeout(reactionTimerRef.current);
+    setReactionPulse(kind);
+    reactionTimerRef.current = setTimeout(() => {
+      setReactionPulse(null);
+      reactionTimerRef.current = null;
+    }, kind === 'success' ? 700 : 900);
+  }, []);
   // Seeded synchronously from the window's launch arguments so the first
   // cursor-position message already has a coordinate space to map into.
-  const displayRef = useRef<DisplayInfo | null>(window.flicky.getDisplayInfo());
+  const displayRef = useRef<DisplayInfo | null>(window.klip.getDisplayInfo());
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stepsRef = useRef<WalkthroughStep[]>([]);
   const returnAnimRef = useRef<number | null>(null);
-  const cursorPosRef = useRef({ x: 0, y: 0 });
   const companionPosRef = useRef({ x: 0, y: 0 });
+  const dockPosRef = useRef(computeDockPos(displayRef.current));
+  const [dockPos, setDockPosState] = useState(dockPosRef.current);
+  const setDockPos = useCallback((pos: { x: number; y: number }) => {
+    dockPosRef.current = pos;
+    setDockPosState(pos);
+  }, []);
 
   // ── Mic capture ──────────────────────────────────────────────────────
   // The audio graph (stream → AudioContext → AudioWorkletNode → destination)
@@ -116,10 +148,10 @@ export function OverlayApp() {
             micLevelSentAtRef.current = now;
             // Speech RMS sits around 0.05–0.3; scale so normal talking
             // fills most of the meter.
-            window.flicky.reportMicLevel(Math.min(1, micPeakRef.current * 4));
+            window.klip.reportMicLevel(Math.min(1, micPeakRef.current * 4));
             micPeakRef.current = 0;
           }
-          window.flicky.sendAudioChunk(e.data);
+          window.klip.sendAudioChunk(e.data);
         };
         // Pull-graph: source → worklet → destination. The worklet
         // leaves its outputs zeroed when 'enabled', so connecting to
@@ -132,20 +164,20 @@ export function OverlayApp() {
         workletNodeRef.current = node;
         return node;
       } catch (err) {
-        console.error('[Flicky] Mic capture init failed:', err);
+        console.error('[KLIP] Mic capture init failed:', err);
         // Nobody reads the overlay's devtools console on a packaged
         // build. Translate the DOMException into something a person can
         // act on and hand it to main, which shows it in the panel.
         const e = err as { name?: string; message?: string };
         const friendly =
           e.name === 'NotAllowedError' || e.name === 'SecurityError'
-            ? 'microphone access is blocked for Flicky. Allow it in your OS privacy settings.'
+            ? 'microphone access is blocked for KLIP. Allow it in your OS privacy settings.'
             : e.name === 'NotFoundError' || e.name === 'OverconstrainedError'
               ? 'no microphone was found. Plug one in or pick a default input device in your sound settings.'
               : e.name === 'NotReadableError'
                 ? 'the microphone is busy or unreadable — another app may be holding it.'
                 : `${e.name ?? 'Error'}: ${e.message ?? String(err)}`;
-        window.flicky.reportMicError(friendly);
+        window.klip.reportMicError(friendly);
         return null;
       } finally {
         micStartingRef.current = false;
@@ -174,15 +206,15 @@ export function OverlayApp() {
       workletNodeRef.current?.port.postMessage('stop');
     };
 
-    const unsubStart = window.flicky.onStartCapture(() => startMic());
-    const unsubStop = window.flicky.onStopCapture(() => stopMic());
+    const unsubStart = window.klip.onStartCapture(() => startMic());
+    const unsubStop = window.klip.onStopCapture(() => stopMic());
 
     // Play TTS audio. Any previous playback is interrupted first so
     // back-to-back responses don't stack on top of each other.
-    const unsubPlayAudio = window.flicky.onPlayAudio(async (audioData) => {
+    const unsubPlayAudio = window.klip.onPlayAudio(async (audioData, mimeType) => {
       stopCurrentTts();
       try {
-        const blob = new Blob([audioData], { type: 'audio/mpeg' });
+        const blob = new Blob([audioData], { type: mimeType });
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
         ttsRef.current = { audio, url };
@@ -192,7 +224,7 @@ export function OverlayApp() {
         };
         await audio.play();
       } catch (err) {
-        console.error('[Flicky] Audio playback failed:', err);
+        console.error('[KLIP] Audio playback failed:', err);
         stopCurrentTts();
       }
     });
@@ -229,8 +261,7 @@ export function OverlayApp() {
     setCursorModeSync('returning');
 
     const animate = () => {
-      const raw = cursorPosRef.current;
-      const target = { x: raw.x + FOLLOW_OFFSET_X, y: raw.y + FOLLOW_OFFSET_Y };
+      const target = dockPosRef.current;
       const current = companionPosRef.current;
       const dx = target.x - current.x;
       const dy = target.y - current.y;
@@ -253,48 +284,40 @@ export function OverlayApp() {
 
   useEffect(() => {
     if (cursorMode === 'following') {
-      setCompanionPosSync({
-        x: cursorPos.x + FOLLOW_OFFSET_X,
-        y: cursorPos.y + FOLLOW_OFFSET_Y,
-      });
+      setCompanionPosSync(dockPos);
     }
-    cursorPosRef.current = cursorPos;
-  }, [cursorPos, cursorMode, setCompanionPosSync]);
+  }, [cursorMode, dockPos, setCompanionPosSync]);
 
   useEffect(() => {
     // displayRef is seeded synchronously from launch args above; this
-    // push also carries bounds updates after a DPI / resolution change.
-    const unsubDisplayInfo = window.flicky.onDisplayInfo((info) => {
+    // push also carries bounds updates after a DPI / resolution change,
+    // which is also when the dock corner needs recomputing.
+    const unsubDisplayInfo = window.klip.onDisplayInfo((info) => {
       displayRef.current = info;
+      setDockPos(computeDockPos(info));
     });
 
     const unsubs = [
-      window.flicky.onVoiceStateChanged(setVoiceState),
-      window.flicky.onCursorPosition((pos) => {
-        // Main now sends a `{ off: true }` pulse to whichever overlay
-        // previously owned the cursor when it leaves that display.
-        // We stop receiving regular updates entirely once the cursor
-        // is off-display, which is why this signal is needed at all.
+      window.klip.onVoiceStateChanged(setVoiceState),
+      window.klip.onCursorPosition((pos) => {
+        // Only used to decide whether the clipboard/type toast (which
+        // follows the user's actual attention) should show on this
+        // display — the pet itself no longer tracks the cursor.
         if ((pos as { off?: boolean }).off) {
           setIsCursorOnThisDisplay(false);
           return;
         }
         const bounds = displayRef.current?.bounds;
-        if (bounds) {
-          const onThis =
-            pos.x >= bounds.x && pos.x < bounds.x + bounds.width &&
-            pos.y >= bounds.y && pos.y < bounds.y + bounds.height;
-          setIsCursorOnThisDisplay(onThis);
-          setCursorPos({ x: pos.x - bounds.x, y: pos.y - bounds.y });
-        } else {
-          // Bounds unknown — hide the companion rather than risk
-          // showing it on every display. Will flip on as soon as
-          // display-info arrives.
+        if (!bounds) {
           setIsCursorOnThisDisplay(false);
-          setCursorPos(pos);
+          return;
         }
+        const onThis =
+          pos.x >= bounds.x && pos.x < bounds.x + bounds.width &&
+          pos.y >= bounds.y && pos.y < bounds.y + bounds.height;
+        setIsCursorOnThisDisplay(onThis);
       }),
-      window.flicky.onWalkthrough((w) => {
+      window.klip.onWalkthrough((w) => {
         // Cache the steps. Main drives advancement via WALKTHROUGH_STEP.
         if (returnAnimRef.current) {
           cancelAnimationFrame(returnAnimRef.current);
@@ -315,7 +338,7 @@ export function OverlayApp() {
         }
         stepsRef.current = w.steps;
       }),
-      window.flicky.onTypeFulfilled((req) => {
+      window.klip.onTypeFulfilled((req) => {
         if (typeToastTimerRef.current) clearTimeout(typeToastTimerRef.current);
         setTypeToast(req);
         typeToastTimerRef.current = setTimeout(() => {
@@ -323,7 +346,9 @@ export function OverlayApp() {
           typeToastTimerRef.current = null;
         }, 5000);
       }),
-      window.flicky.onWalkthroughStep((i) => {
+      window.klip.onAiResponseComplete(() => triggerReaction('success')),
+      window.klip.onAiError(() => triggerReaction('error')),
+      window.klip.onWalkthroughStep((i) => {
         if (i === null) {
           // Walkthrough ending — the WALKTHROUGH(null) event will
           // schedule the return animation. Just clear current step UI.
@@ -350,12 +375,13 @@ export function OverlayApp() {
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
       if (typeToastTimerRef.current) clearTimeout(typeToastTimerRef.current);
       if (returnAnimRef.current) cancelAnimationFrame(returnAnimRef.current);
+      if (reactionTimerRef.current) clearTimeout(reactionTimerRef.current);
     };
-  }, [setCursorModeSync, setCompanionPosSync, startReturnAnimation]);
+  }, [setCursorModeSync, setCompanionPosSync, startReturnAnimation, triggerReaction]);
 
   useEffect(() => {
     if (voiceState === 'listening') {
-      // User started a new turn — interrupt anything Flicky was saying.
+      // User started a new turn — interrupt anything KLIP was saying.
       stopCurrentTts();
       setCurrentStep(null);
       stepsRef.current = [];
@@ -377,7 +403,7 @@ export function OverlayApp() {
   // Walkthrough steps are always *on* one specific display (the one the
   // cursor was on when the screenshot was taken). Render the annotated
   // cursor only on that display so users with multiple monitors don't
-  // see the blue cursor flying around on a screen the step isn't on.
+  // see the pet flying around on a screen the step isn't on.
   const isStepOnThisDisplay = (() => {
     if (!currentStep) return false;
     const b = displayRef.current?.bounds;
@@ -388,8 +414,11 @@ export function OverlayApp() {
     );
   })();
 
+  // At rest, the pet only shows on its home display (the dock); while
+  // pointing at something, it shows wherever that target actually is.
+  const isPrimaryDisplay = displayRef.current?.isPrimary ?? false;
   const showOnThisDisplay =
-    isNavigating || isHolding ? isStepOnThisDisplay : isCursorOnThisDisplay;
+    isNavigating || isHolding ? isStepOnThisDisplay : isPrimaryDisplay;
 
   const cursorTransition = isNavigating
     ? 'left 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), top 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)'
@@ -399,6 +428,7 @@ export function OverlayApp() {
 
   const showAnnotation = (isNavigating || isHolding) && isStepOnThisDisplay;
   const isMultiStep = (currentStep?.total ?? 0) > 1;
+  const petMood: PetMood = reactionPulse ?? voiceState;
 
   return (
     <div className="overlay-container">
@@ -412,47 +442,14 @@ export function OverlayApp() {
           )}
 
           <div
-            className={`cursor-triangle ${isNavigating || isHolding ? 'navigating' : ''}`}
+            className={`klip-pet-wrap ${isNavigating || isHolding ? 'navigating' : ''}`}
             style={{
               left: companionPos.x,
               top: companionPos.y,
               transition: cursorTransition,
             }}
           >
-            <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="fl-front" x1="10%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#e0f2fe" />
-                  <stop offset="50%" stopColor="#7dd3fc" />
-                  <stop offset="100%" stopColor="#2563eb" />
-                </linearGradient>
-              </defs>
-
-              {/* Single glossy triangle — tip at upper-left, body trails down-right */}
-              <polygon
-                points="4,4 34,14 14,32"
-                fill="url(#fl-front)"
-                stroke="url(#fl-front)"
-                strokeWidth="3"
-                strokeLinejoin="round"
-              />
-
-              {/* Upper edge gloss highlight */}
-              <polyline
-                points="4,4 34,14"
-                fill="none"
-                stroke="rgba(255,255,255,0.65)"
-                strokeWidth="1.4"
-                strokeLinecap="round"
-              />
-              <polyline
-                points="4,4 14,32"
-                fill="none"
-                stroke="rgba(255,255,255,0.4)"
-                strokeWidth="1"
-                strokeLinecap="round"
-              />
-            </svg>
+            <KlipPet mood={petMood} size={40} />
           </div>
 
           {voiceState === 'listening' && (
@@ -462,13 +459,6 @@ export function OverlayApp() {
             >
               <Waveform state="listening" bars={10} height={22} />
             </div>
-          )}
-
-          {voiceState === 'processing' && (
-            <div
-              className="processing-spinner"
-              style={{ left: companionPos.x + 44, top: companionPos.y + 6 }}
-            />
           )}
 
           {showAnnotation && (
@@ -506,7 +496,7 @@ export function OverlayApp() {
                 ) : (
                   <>
                     Copied — press{' '}
-                    <kbd>{window.flicky.platform === 'darwin' ? '⌘V' : 'Ctrl+V'}</kbd> to paste
+                    <kbd>{window.klip.platform === 'darwin' ? '⌘V' : 'Ctrl+V'}</kbd> to paste
                   </>
                 )}
               </div>

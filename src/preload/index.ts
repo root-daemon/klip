@@ -4,9 +4,12 @@ import type {
   ApiKeyName,
   ClaudeModel,
   OpenAIModel,
+  GeminiModel,
   MindProvider,
+  TtsProvider,
   GroqTranscriptionModel,
-  FlickySettings,
+  TranscriptionProviderType,
+  KlipSettings,
   VoiceState,
   TranscriptionResult,
   Walkthrough,
@@ -40,7 +43,7 @@ const initialDisplayInfo: DisplayInfo | null = (() => {
   } catch (err) {
     // Falling back to null silently would reproduce the exact bug this
     // argument exists to fix, so make the failure visible.
-    console.warn('[Flicky] Could not parse display info from launch args:', err);
+    console.warn('[Klip] Could not parse display info from launch args:', err);
     return null;
   }
 })();
@@ -53,20 +56,25 @@ const api = {
   platform: process.platform as NodeJS.Platform,
 
   // ── Settings ───────────────────────────────────────────────────────
-  getSettings: (): Promise<FlickySettings> => ipcRenderer.invoke(IPC.GET_SETTINGS),
+  getSettings: (): Promise<KlipSettings> => ipcRenderer.invoke(IPC.GET_SETTINGS),
 
   setModel: (model: ClaudeModel): void => ipcRenderer.send(IPC.SET_MODEL, model),
   setOpenAIModel: (model: OpenAIModel): void => ipcRenderer.send(IPC.SET_OPENAI_MODEL, model),
+  setGeminiModel: (model: GeminiModel): void => ipcRenderer.send(IPC.SET_GEMINI_MODEL, model),
   setMindProvider: (provider: MindProvider): void => ipcRenderer.send(IPC.SET_MIND_PROVIDER, provider),
   setReasoningDepth: (depth: ReasoningDepth): void => ipcRenderer.send(IPC.SET_REASONING_DEPTH, depth),
   setReplyTone: (tone: ReplyTone): void => ipcRenderer.send(IPC.SET_REPLY_TONE, tone),
 
+  setTtsProvider: (provider: TtsProvider): void => ipcRenderer.send(IPC.SET_TTS_PROVIDER, provider),
   setVoiceId: (id: string): void => ipcRenderer.send(IPC.SET_VOICE_ID, id),
   setVoiceSpeed: (speed: number): void => ipcRenderer.send(IPC.SET_VOICE_SPEED, speed),
   setVoiceStability: (stability: number): void => ipcRenderer.send(IPC.SET_VOICE_STABILITY, stability),
+  setSarvamSpeaker: (speaker: string): void => ipcRenderer.send(IPC.SET_SARVAM_SPEAKER, speaker),
   setSpeakReplies: (enabled: boolean): void => ipcRenderer.send(IPC.SET_SPEAK_REPLIES, enabled),
 
   setGroqModel: (model: GroqTranscriptionModel): void => ipcRenderer.send(IPC.SET_GROQ_MODEL, model),
+  setTranscriptionProvider: (provider: TranscriptionProviderType): void =>
+    ipcRenderer.send(IPC.SET_TRANSCRIPTION_PROVIDER, provider),
 
   toggleCursor: (enabled: boolean): void => ipcRenderer.send(IPC.TOGGLE_CURSOR, enabled),
   setLaunchAtLogin: (enabled: boolean): void => ipcRenderer.send(IPC.SET_LAUNCH_AT_LOGIN, enabled),
@@ -81,6 +89,8 @@ const api = {
   resumePushToTalkShortcut: (): void => ipcRenderer.send(IPC.RESUME_PUSH_TO_TALK_SHORTCUT),
 
   playVoicePreview: (voiceId: string): void => ipcRenderer.send(IPC.PLAY_VOICE_PREVIEW, voiceId),
+  playSarvamVoicePreview: (speaker: string): void =>
+    ipcRenderer.send(IPC.PLAY_SARVAM_VOICE_PREVIEW, speaker),
 
   // ── Permissions ────────────────────────────────────────────────────
   getPermissions: (): Promise<PermissionStatus> => ipcRenderer.invoke(IPC.GET_PERMISSIONS),
@@ -233,8 +243,8 @@ const api = {
     return () => ipcRenderer.removeListener(IPC.CURSOR_POSITION, handler);
   },
 
-  onSettingsChanged: (cb: (settings: FlickySettings) => void) => {
-    const handler = (_e: Electron.IpcRendererEvent, settings: FlickySettings) => cb(settings);
+  onSettingsChanged: (cb: (settings: KlipSettings) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, settings: KlipSettings) => cb(settings);
     ipcRenderer.on(IPC.SETTINGS_CHANGED, handler);
     return () => ipcRenderer.removeListener(IPC.SETTINGS_CHANGED, handler);
   },
@@ -287,17 +297,17 @@ const api = {
     ipcRenderer.send('audio-chunk', Buffer.from(buffer));
   },
 
-  onPlayAudio: (cb: (audioData: ArrayBuffer) => void) => {
-    const handler = (_e: Electron.IpcRendererEvent, data: Buffer) => {
+  onPlayAudio: (cb: (audioData: ArrayBuffer, mimeType: string) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, data: Buffer, mimeType?: string) => {
       const copy = new ArrayBuffer(data.byteLength);
       new Uint8Array(copy).set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-      cb(copy);
+      cb(copy, mimeType ?? 'audio/mpeg');
     };
     ipcRenderer.on('play-audio', handler);
     return () => ipcRenderer.removeListener('play-audio', handler);
   },
 };
 
-export type FlickyAPI = typeof api;
+export type KlipAPI = typeof api;
 
-contextBridge.exposeInMainWorld('flicky', api);
+contextBridge.exposeInMainWorld('klip', api);

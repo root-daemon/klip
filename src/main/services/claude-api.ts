@@ -42,7 +42,7 @@ export class ClaudeAPI {
   ): Promise<void> {
     const apiKey = getApiKey('anthropic');
     if (!apiKey) {
-      callbacks.onError(new Error('Anthropic API key not configured. Add it in the Flicky panel.'));
+      callbacks.onError(new Error('Anthropic API key not configured. Add it in the Klip panel.'));
       return;
     }
 
@@ -84,7 +84,7 @@ export class ClaudeAPI {
       system: systemPrompt,
       messages,
       stream: true,
-      // Let Flicky reach the web when it needs fresh info. Server-side
+      // Let Klip reach the web when it needs fresh info. Server-side
       // tool — Claude decides when to search and we just stream the
       // final answer.
       tools: [
