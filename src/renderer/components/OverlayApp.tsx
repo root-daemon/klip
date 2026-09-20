@@ -520,7 +520,6 @@ export function OverlayApp() {
       : 'none';
 
   const showAnnotation = (isNavigating || isHolding) && isStepOnThisDisplay;
-  const isMultiStep = (currentStep?.total ?? 0) > 1;
   const isMultiStep = !computerActionTarget && (currentStep?.total ?? 0) > 1;
   // While a real multi-step agent task is running, the step kind tells
   // a richer story than the generic 'processing' voice state does —
