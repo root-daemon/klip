@@ -322,7 +322,7 @@ footer a:hover { color: var(--accent-light); }
 
 .rive-canvas,
 .rive-fallback { position: relative; z-index: 1; width: 220px; height: 220px; }
-.rive-canvas { border-radius: 50%; overflow: hidden; filter: hue-rotate(45deg) saturate(1.25) brightness(0.9); mix-blend-mode: screen; }
+.rive-canvas { border-radius: 50%; overflow: hidden; filter: saturate(1.1) brightness(0.9); mix-blend-mode: screen; }
 .rive-canvas canvas { width: 100% !important; height: 100% !important; }
 
 .rive-fallback { display: flex; align-items: center; justify-content: center; gap: 12px; }
