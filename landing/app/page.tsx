@@ -1,7 +1,6 @@
 import Image from 'next/image';
 import { HeroVideo } from './components/HeroVideo';
 import { MotionField } from './components/MotionField';
-import { RiveActivity } from './components/RiveActivity';
 import klipPet from '../public/klip-pet.png';
 
 const REPO = 'https://github.com/root-daemon/klip';
@@ -42,7 +41,6 @@ export default function Page() {
           </div>
         </div>
         <div className="hero-companion" aria-label="KLIP companion">
-          <div className="hero-rive-wrap" aria-hidden="true"><RiveActivity className="hero-rive" /></div>
           <span className="orbit orbit-one" />
           <span className="orbit orbit-two" />
           <Image src={klipPet} alt="KLIP companion with glowing red eyes" priority />
@@ -73,7 +71,12 @@ export default function Page() {
         </div>
         <div className="live-state spotlight-surface" data-spotlight="true" aria-label="Animated example of KLIP processing state">
           <div className="live-state-bar"><span>KLIP / CURRENT STATE</span><b>PROCESSING</b></div>
-          <div className="rive-stage"><RiveActivity /></div>
+          <div className="state-visual" aria-hidden="true">
+            <span className="state-orbit state-orbit-one" />
+            <span className="state-orbit state-orbit-two" />
+            <span className="state-scan" />
+            <Image src={klipPet} alt="" />
+          </div>
           <p><i />Watching for a fresh screen</p>
         </div>
       </section>
@@ -96,7 +99,6 @@ export default function Page() {
           <div className="console-scene">
             <span className="console-ring ring-a" />
             <span className="console-ring ring-b" />
-            <RiveActivity className="console-rive" />
             <Image className="console-pet" src={klipPet} alt="" />
             <span className="console-ping ping-a" />
             <span className="console-ping ping-b" />
@@ -134,7 +136,8 @@ export default function Page() {
             <p>Voice or text enters once.</p>
           </div>
           <div className="route-branch" aria-hidden="true">
-            <RiveActivity className="route-rive" />
+            <i />
+            <i />
           </div>
           <div className="route-destinations">
             <article>
@@ -160,7 +163,7 @@ export default function Page() {
           <p className="kicker">Voice and conversation</p>
           <h2>Hold a shortcut. Start talking.</h2>
           <p>Use push-to-talk or toggle mode. KLIP transcribes through Groq, OpenAI, Sarvam, or available native speech services, then can answer aloud with ElevenLabs or Sarvam.</p>
-          <div className="voice-rive-wrap" aria-hidden="true"><RiveActivity className="voice-rive" /></div>
+          <div className="signal" aria-hidden="true"><i /><i /><i /><i /><i /><i /><i /></div>
         </article>
         <article className="capability capability-pet spotlight-surface" data-spotlight="true">
           <Image src={klipPet} alt="" />

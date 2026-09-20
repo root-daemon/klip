@@ -24,10 +24,10 @@ Produces a static bundle in `landing/out/`.
 
 ## Motion
 
-The companion-state panels use the local `public/klip-activity.riv` asset with
-the `@rive-app/react-canvas` runtime. They run only in the browser and settle
-to a static indicator for `prefers-reduced-motion`. The signal asset is adapted
-from Rive's MIT-licensed React example; see `RIVE_ASSET_LICENSE.md`.
+Motion is native to the site: pointer-reactive light fields, companion orbits,
+and compact status signals make the operating state legible without a
+third-party animation asset. Every animation settles for
+`prefers-reduced-motion`.
 
 ## Deploy
 

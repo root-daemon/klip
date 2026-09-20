@@ -220,22 +220,6 @@ footer a:hover { color: var(--accent-light); }
   animation: companion-float 2.8s ease-in-out infinite, companion-glow 2.8s ease-in-out infinite;
 }
 
-.hero-rive-wrap {
-  position: absolute;
-  z-index: 1;
-  right: 50%;
-  bottom: 50%;
-  display: grid;
-  width: min(28vw, 340px);
-  height: min(28vw, 340px);
-  place-items: center;
-  opacity: 0.43;
-  pointer-events: none;
-  transform: translate(50%, 50%);
-}
-
-.hero-rive { width: 100% !important; height: 100% !important; border-radius: 50%; overflow: hidden; }
-
 .hero-companion p {
   position: absolute;
   bottom: 20px;
@@ -307,7 +291,7 @@ footer a:hover { color: var(--accent-light); }
 
 .live-state-bar b { color: var(--accent-light); font-weight: 700; }
 
-.rive-stage {
+.state-visual {
   position: relative;
   display: grid;
   min-height: 270px;
@@ -316,19 +300,23 @@ footer a:hover { color: var(--accent-light); }
   background: linear-gradient(90deg, transparent 49.8%, rgb(237 70 45 / 10%) 50%, transparent 50.2%), linear-gradient(#1b1110, #100f10);
 }
 
-.rive-stage::before,
-.rive-stage::after { position: absolute; width: 210px; height: 210px; border: 1px solid rgb(237 70 45 / 14%); border-radius: 50%; content: ''; }
-.rive-stage::after { width: 142px; height: 142px; border-color: rgb(237 70 45 / 28%); }
+.state-visual::before,
+.state-visual::after { position: absolute; width: 210px; height: 210px; border: 1px solid rgb(237 70 45 / 14%); border-radius: 50%; content: ''; }
+.state-visual::after { width: 142px; height: 142px; border-color: rgb(237 70 45 / 28%); }
 
-.rive-canvas,
-.rive-fallback { position: relative; z-index: 1; width: 220px; height: 220px; }
-.rive-canvas { border-radius: 50%; overflow: hidden; filter: saturate(1.1) brightness(0.9); mix-blend-mode: screen; }
-.rive-canvas canvas { width: 100% !important; height: 100% !important; }
+.state-visual > img {
+  position: relative;
+  z-index: 2;
+  width: 108px;
+  height: auto;
+  filter: drop-shadow(0 12px 18px rgb(237 70 45 / 30%));
+  animation: state-companion-drift 3.2s ease-in-out infinite;
+}
 
-.rive-fallback { display: flex; align-items: center; justify-content: center; gap: 12px; }
-.rive-fallback span { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
-.rive-fallback span:nth-child(2) { opacity: 0.7; }
-.rive-fallback span:nth-child(3) { opacity: 0.35; }
+.state-orbit { position: absolute; z-index: 1; border: 1px solid rgb(237 70 45 / 33%); border-radius: 50%; }
+.state-orbit-one { width: 208px; height: 112px; animation: orbit-turn 10s linear infinite; }
+.state-orbit-two { width: 126px; height: 210px; opacity: 0.58; animation: orbit-turn 14s linear infinite reverse; }
+.state-scan { position: absolute; z-index: 3; width: 1px; height: 74%; background: linear-gradient(transparent, var(--accent), transparent); box-shadow: 0 0 15px rgb(237 70 45 / 58%); animation: state-scan 3.8s ease-in-out infinite; }
 
 .live-state > p {
   display: flex;
@@ -438,8 +426,6 @@ footer a:hover { color: var(--accent-light); }
   content: '';
 }
 
-.console-rive { position: absolute; z-index: 1; width: 286px; height: 286px; opacity: 0.84; }
-
 .console-pet {
   position: relative;
   z-index: 2;
@@ -517,12 +503,6 @@ footer a:hover { color: var(--accent-light); }
 .route-branch { position: relative; display: grid; align-content: center; justify-items: center; border-inline: 1px solid var(--line); }
 .route-branch::before { position: absolute; top: 50%; right: 0; left: 0; height: 1px; background: rgb(237 70 45 / 42%); content: ''; }
 
-.route-rive {
-  width: 78px;
-  height: 78px;
-  opacity: 0.9;
-}
-
 .route-branch i {
   position: relative;
   z-index: 1;
@@ -557,18 +537,6 @@ footer a:hover { color: var(--accent-light); }
 .capability h2 { max-width: 420px; margin-bottom: 15px; font-size: 28px; }
 .capability-wide { --capability-base: linear-gradient(130deg, #1c100d, #111112 57%); grid-column: span 2; min-height: 340px; }
 .capability-wide > p:not(.kicker) { max-width: 500px; }
-
-.voice-rive-wrap {
-  position: absolute;
-  right: 7%;
-  bottom: 22px;
-  display: grid;
-  width: 170px;
-  height: 170px;
-  place-items: center;
-}
-
-.voice-rive { width: 170px; height: 170px; }
 
 .signal { position: absolute; right: 8%; bottom: 34px; display: flex; align-items: center; gap: 7px; height: 115px; }
 
@@ -688,6 +656,17 @@ footer p { margin: 0; }
   50% { transform: scaleY(1); opacity: 1; }
 }
 
+@keyframes state-companion-drift {
+  0%, 100% { transform: translateY(4px); }
+  50% { transform: translateY(-5px); }
+}
+
+@keyframes state-scan {
+  0%, 100% { transform: translateX(-42px); opacity: 0; }
+  20%, 78% { opacity: 0.72; }
+  50% { transform: translateX(42px); opacity: 1; }
+}
+
 @keyframes status-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgb(237 70 45 / 38%); }
   50% { box-shadow: 0 0 0 7px rgb(237 70 45 / 0%); }
@@ -709,7 +688,6 @@ footer p { margin: 0; }
   .routing-map { grid-template-columns: 1fr; }
   .route-branch { min-height: 96px; border-block: 1px solid var(--line); border-inline: 0; }
   .route-branch::before { top: 50%; }
-  .route-rive { width: 72px; height: 72px; }
   .route-destinations { grid-template-rows: auto; }
   .route-outcome { min-height: 160px; }
   .provider-section { gap: 44px; }
@@ -723,8 +701,6 @@ footer p { margin: 0; }
   .hero h1 { font-size: clamp(46px, 15vw, 68px); }
   .hero-companion { order: -1; min-height: 310px; }
   .hero-companion > img { width: 255px; height: 255px !important; }
-  .hero-rive-wrap { right: 50%; bottom: 50%; width: 230px; height: 230px; transform: translate(50%, 50%); }
-  .hero-rive { width: 100% !important; height: 100% !important; }
   .orbit-one { width: 310px; height: 140px; }
   .orbit-two { width: 210px; height: 320px; }
   .intro { padding: 88px 22px; }
@@ -738,14 +714,12 @@ footer p { margin: 0; }
   .state-section { padding-top: 8px; padding-bottom: 92px; }
   .command-deck { padding-bottom: 92px; }
   .console-scene { min-height: 305px; }
-  .console-rive { width: 240px; height: 240px; }
-  .rive-stage { min-height: 232px; }
+  .state-visual { min-height: 232px; }
   .loop-grid,
   .capability-grid { grid-template-columns: 1fr; }
   .capability-wide { grid-column: auto; }
   .capability { min-height: 280px; }
-  .voice-rive-wrap { right: 19px; bottom: 13px; width: 126px; height: 126px; }
-  .voice-rive { width: 126px; height: 126px; }
+  .signal { right: 23px; bottom: 22px; transform: scale(0.82); transform-origin: right bottom; }
   .routing-section { padding-bottom: 92px; }
   .route-source,
   .route-outcome { min-height: 150px; }
