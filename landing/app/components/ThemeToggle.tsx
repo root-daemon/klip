@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 
 type Theme = 'light' | 'dark';
 
-const KEY = 'flicky-theme';
+const KEY = 'klip-theme';
 
 function current(): Theme {
   if (typeof document === 'undefined') return 'light';

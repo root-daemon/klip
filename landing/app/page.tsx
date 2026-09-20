@@ -1,396 +1,211 @@
-import { Mark } from './components/Mark';
+import Image from 'next/image';
 import { HeroVideo } from './components/HeroVideo';
-import { ShaderWordmark } from './components/ShaderWordmark';
-import { Win } from './components/Win';
-import { Taskbar } from './components/Taskbar';
-import { DesktopIcons } from './components/DesktopIcons';
-import { HeroClutter } from './components/HeroClutter';
-import { Parallax } from './components/Parallax';
-import { PointAt } from './components/PointAt';
-import { MockListen, MockSee, MockSpeak, MockPoint } from './components/Mockups';
-import {
-  WinLogo,
-  AppleGlyph,
-  TextFileIcon,
-  FolderIcon,
-  InstallerIcon,
-  ZipIcon,
-} from './components/Icons';
+import { RiveActivity } from './components/RiveActivity';
+import klipPet from '../public/klip-pet.png';
 
-const REPO = 'https://github.com/pango07/flicky';
+const REPO = 'https://github.com/root-daemon/klip';
 const RELEASES = `${REPO}/releases/latest`;
-const CLICKY = 'https://www.clicky.so/';
-const FARZA = 'https://github.com/farzaa';
-const JULIO = 'https://github.com/jvaught01';
 
-const STEPS = [
-  {
-    n: '01',
-    t: 'hear you.',
-    d: 'hold to talk, or tap to toggle. groq whisper turns what you said into text before you finish letting go.',
-    mock: <MockListen />,
-  },
-  {
-    n: '02',
-    t: 'see your screen.',
-    d: 'a screenshot goes with every question — claude, gpt, or a local model reads it, so you never describe anything twice.',
-    mock: <MockSee />,
-  },
-  {
-    n: '03',
-    t: 'speak back.',
-    d: 'elevenlabs voice, or text-only if you would rather read. the stream window mirrors every word.',
-    mock: <MockSpeak />,
-  },
-  {
-    n: '04',
-    t: 'point at things.',
-    d: 'multi-step answers become numbered walkthroughs, and the blue cursor flies to the exact pixel each time.',
-    mock: <MockPoint />,
-  },
-] as const;
-
-const FEATURES = [
-  {
-    n: '01',
-    file: 'local.txt',
-    t: 'local by default',
-    d: 'chats and keys are encrypted on your own machine. nothing lives on our servers, because there aren’t any.',
-  },
-  {
-    n: '02',
-    file: 'brain.exe',
-    t: 'your choice of brain',
-    d: 'claude sonnet or opus 4.6, the gpt-5 family, or any local / openai-compatible endpoint — ollama, lm studio, whatever you run.',
-  },
-  {
-    n: '03',
-    file: 'memory.log',
-    t: 'never runs out of context',
-    d: 'long conversations auto-compact into a summary, so a single chat can just keep going all day.',
-  },
-  {
-    n: '04',
-    file: 'typing.dll',
-    t: 'types for you',
-    d: 'opt in and flicky types straight into the focused field — otherwise the answer lands on your clipboard.',
-  },
-  {
-    n: '05',
-    file: 'stream.exe',
-    t: 'stream window',
-    d: 'a floating transparent panel mirrors the live q&a. scroll it, select it, copy straight out of it.',
-  },
-  {
-    n: '06',
-    file: 'setup.exe',
-    t: 'guided setup',
-    d: 'a three-minute wizard tests each key, your shortcut and your mic before it lets you finish.',
-  },
-] as const;
-
-const DOWNLOADS = [
-  {
-    file: 'Flicky-Setup-1.2.1.exe',
-    os: 'windows',
-    detail: 'x64 + arm64 · one installer',
-    icon: <InstallerIcon />,
-    id: 'dl-windows',
-  },
-  {
-    file: 'Flicky-1.2.1.dmg',
-    os: 'mac',
-    detail: 'apple silicon or intel',
-    icon: <FolderIcon />,
-    id: 'dl-mac',
-  },
-  {
-    file: 'Flicky-1.2.1.AppImage',
-    os: 'linux',
-    detail: 'also .deb',
-    icon: <ZipIcon />,
-    id: 'dl-linux',
-  },
-] as const;
-
-const MARQUEE = [
-  'works on windows',
-  'works on mac',
-  'works on linux',
-  'local by default',
-  'bring your own keys',
-  'mit licensed',
-];
-
-function MarqueeRun({ k }: { k: string }) {
-  return (
-    <span className="marq-run">
-      {MARQUEE.map((m) => (
-        <span key={`${k}-${m}`}>
-          {m}
-          <i>✦</i>
-        </span>
-      ))}
-    </span>
-  );
-}
+const PROVIDERS = ['Anthropic Claude', 'OpenAI', 'Google Gemini', 'Ollama'];
 
 export default function Page() {
   return (
-    <>
-      <DesktopIcons />
-      <main>
-        {/* ---------------------------------------------------------- hero */}
-        <section className="hero" id="top">
-          <div className="stage">
-            <Parallax />
-            <HeroClutter />
+    <main>
+      <nav className="nav" aria-label="Main navigation">
+        <a className="nav-brand" href="#top" aria-label="KLIP home">
+          <Image src={klipPet} alt="" />
+          <span>KLIP</span>
+        </a>
+        <div className="nav-links">
+          <a href="#capabilities">Capabilities</a>
+          <a href="#how-it-works">How it works</a>
+          <a href="#safety">Safety</a>
+          <a href={REPO} target="_blank" rel="noopener noreferrer">GitHub</a>
+        </div>
+        <a className="button button-small" href={RELEASES} target="_blank" rel="noopener noreferrer">
+          Download
+        </a>
+      </nav>
 
-            <div className="hero-copy">
-              <p className="eyebrow">windows · mac · linux</p>
-              <ShaderWordmark text="flicky" />
-              <p className="lead">an ai buddy that lives on your desktop.</p>
-              <div className="cta">
-                <a
-                  className="btn primary"
-                  id="cta-win"
-                  href={RELEASES}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <WinLogo className="btn-glyph" />
-                  download for windows
-                </a>
-                <a
-                  className="btn ghost"
-                  href={RELEASES}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <AppleGlyph className="btn-glyph" />
-                  download for mac
-                </a>
-                <a
-                  className="btn text"
-                  href={RELEASES}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  linux (.AppImage / .deb)
-                </a>
-              </div>
-              <p className="tiny">100% free · open source · bring your own keys</p>
-            </div>
-
-            <PointAt target="#cta-win" label="click here!" delay={1200} />
-          </div>
-
-          <div className="hero-video">
-            <HeroVideo />
-          </div>
-        </section>
-
-        {/* --------------------------------------------------------- dream */}
-        <section className="section dream">
-          <span className="kao float-kao a">( ˶ˆ ᗜ ˆ˵ )</span>
-          <span className="kao float-kao b">(•_•)</span>
-          <Win title="readme.txt" icon={<TextFileIcon />} width="620px" className="notepad center">
-            <p>
-              the models got really good, and we&apos;re all still typing at them in a chat box
-              in a browser tab. that felt backwards.
-            </p>
-            <p>
-              so we put one on your screen instead. it looks at what you&apos;re doing, talks
-              back out loud, and points at the thing it&apos;s talking about — no pasting
-              screenshots, no describing where the button is.
-            </p>
-            <p>
-              flicky is a from-scratch, cross-platform take on{' '}
-              <a href={FARZA} target="_blank" rel="noopener noreferrer">farza</a>&apos;s{' '}
-              <a href={CLICKY} target="_blank" rel="noopener noreferrer">clicky</a>, built by{' '}
-              <a href={JULIO} target="_blank" rel="noopener noreferrer">julio</a> so the rest of
-              us get one too.
-            </p>
-          </Win>
-        </section>
-
-        {/* -------------------------------------------------- how it works */}
-        <section className="section how" id="how">
-          <h2 className="sec-head">how it works</h2>
-          <div className="rows">
-            {STEPS.map((s, i) => (
-              <div className={`row${i % 2 ? ' flip' : ''}`} key={s.n}>
-                <div className="row-win">
-                  <Win title={`step-${s.n}`} icon={<Mark />}>
-                    {s.mock}
-                  </Win>
-                </div>
-                <div className="row-say">
-                  <span className="chip">
-                    <Mark className="chip-mark" />
-                    flicky
-                  </span>
-                  <div className="bubble">
-                    <h3>
-                      <span className="row-n">{s.n}</span> {s.t}
-                    </h3>
-                    <p>{s.d}</p>
-                  </div>
-                </div>
-                {s.n === '04' ? (
-                  <PointAt target=".dialog-title" label="this one!" side="left" />
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* ------------------------------------------------------ marquee */}
-        <div className="marq" aria-hidden="true">
-          <div className="marq-track">
-            <MarqueeRun k="a" />
-            <MarqueeRun k="b" />
+      <section className="hero" id="top">
+        <div className="hero-copy">
+          <p className="kicker">A screen-aware desktop companion</p>
+          <h1>Speak.<br />Get it done.</h1>
+          <p className="hero-text">
+            KLIP listens, sees what is on screen, and can carefully operate your computer when you ask it to.
+          </p>
+          <div className="hero-actions">
+            <a className="button" href={RELEASES} target="_blank" rel="noopener noreferrer">Download KLIP</a>
+            <a className="text-link" href="#capabilities">Explore capabilities</a>
           </div>
         </div>
+        <div className="hero-companion" aria-label="KLIP companion">
+          <div className="hero-rive-wrap" aria-hidden="true"><RiveActivity className="hero-rive" /></div>
+          <span className="orbit orbit-one" />
+          <span className="orbit orbit-two" />
+          <Image src={klipPet} alt="KLIP companion with glowing red eyes" priority />
+          <p>Present when needed. Quiet when not.</p>
+        </div>
+      </section>
 
-        {/* ------------------------------------------------------ features */}
-        <section className="section" id="features">
-          <h2 className="sec-head">what you get</h2>
-          <div className="feat-grid">
-            {FEATURES.map((f) => (
-              <Win key={f.file} title={f.file} icon={<TextFileIcon />} className="feat">
-                <span className="feat-n">{f.n}</span>
-                <h3>{f.t}</h3>
-                <p>{f.d}</p>
-              </Win>
-            ))}
+      <section className="intro" aria-label="KLIP overview">
+        <p className="kicker">More than chat</p>
+        <h2>A companion with a body, not another browser tab.</h2>
+        <p>
+          Hold your shortcut, ask in your own words, and KLIP routes the request to the right kind of help. A conversation stays lightweight. A desktop task gets fresh visual context before every action.
+        </p>
+      </section>
+
+      <section className="state-section" id="state" aria-labelledby="state-heading">
+        <div className="state-copy">
+          <p className="kicker">Presence, not noise</p>
+          <h2 id="state-heading">KLIP makes its place in the loop obvious.</h2>
+          <p>
+            The companion is a practical status surface. You can tell whether KLIP is listening, working, waiting for you, or done without having to hunt through a chat transcript.
+          </p>
+          <div className="state-legend" aria-label="KLIP companion states">
+            <span><i className="state-listening" />Listening</span>
+            <span><i className="state-thinking" />Thinking</span>
+            <span><i className="state-finished" />Finished</span>
           </div>
-        </section>
+        </div>
+        <div className="live-state" aria-label="Animated example of KLIP processing state">
+          <div className="live-state-bar"><span>KLIP / CURRENT STATE</span><b>PROCESSING</b></div>
+          <div className="rive-stage"><RiveActivity /></div>
+          <p><i />Watching for a fresh screen</p>
+        </div>
+      </section>
 
-        {/* ----------------------------------------------------- get flicky */}
-        <section className="section" id="get">
-          <div className="getcard">
-            <span className="free-tag">free</span>
-            <h2>get flicky.</h2>
-            <p className="get-sub">
-              100% free. every tagged release is built and published on github.
-            </p>
-            <div className="dl-grid">
-              {DOWNLOADS.map((d) => (
-                <Win key={d.file} title={d.file} icon={d.icon} className="dl-win">
-                  <div className="dl-os">{d.os}</div>
-                  <div className="dl-detail">{d.detail}</div>
-                  <a
-                    className="btn primary sm"
-                    id={d.id}
-                    href={RELEASES}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    download
-                  </a>
-                </Win>
-              ))}
-            </div>
-            <p className="get-keys">
-              you&apos;ll need keys for anthropic or openai (or none, with a local model), groq
-              for speech-to-text, and optionally elevenlabs for a voice. add them in the app —
-              they never leave your machine.
-            </p>
-            <PointAt target="#dl-windows" label="over here!" />
+      <section className="demo-section" id="capabilities">
+        <div className="section-heading">
+          <p className="kicker">Observe, decide, act</p>
+          <h2>Every desktop action is a careful loop.</h2>
+        </div>
+        <HeroVideo />
+        <div className="loop-grid">
+          <article><span>01</span><h3>Observe</h3><p>KLIP captures the current screen and adds a coordinate grid for precise context.</p></article>
+          <article><span>02</span><h3>Decide</h3><p>Your selected reasoning provider chooses one next action, not a blind click sequence.</p></article>
+          <article><span>03</span><h3>Verify</h3><p>A fresh screenshot follows each action so KLIP can confirm what actually changed.</p></article>
+        </div>
+      </section>
+
+      <section className="routing-section" id="how-it-works" aria-labelledby="routing-heading">
+        <div className="section-heading routing-heading">
+          <p className="kicker">Request routing</p>
+          <h2 id="routing-heading">One ask. The right kind of help.</h2>
+        </div>
+        <div className="routing-map">
+          <div className="route-source">
+            <span>INPUT</span>
+            <strong>Your words</strong>
+            <p>Voice or text enters once.</p>
           </div>
-        </section>
-
-        {/* ----------------------------------------------------- questions */}
-        <section className="section" id="faq">
-          <h2 className="sec-head">questions</h2>
-          <Win title="questions.txt" icon={<TextFileIcon />} width="760px" className="faq center">
-            <details>
-              <summary>is it private?</summary>
-              <p>
-                yes. everything runs locally — your chats stay on your machine and your api keys
-                are encrypted at rest. there is no flicky backend for anything to be sent to. the
-                only network calls are the ones you configure, straight to the providers you
-                picked.
-              </p>
-            </details>
-            <details>
-              <summary>what does it cost?</summary>
-              <p>
-                nothing. flicky is free and mit licensed. you pay your model and voice providers
-                directly for what you use — and if you run a local model through ollama or lm
-                studio, that part costs nothing at all.
-              </p>
-            </details>
-            <details>
-              <summary>does it work on windows?</summary>
-              <p>
-                yes — that&apos;s the whole point of this project. hold-to-talk, the tray
-                behaviour, the mic permission flow and the setup wizard were all built and tested
-                on windows, not bolted on afterwards. linux works too.
-              </p>
-            </details>
-            <details>
-              <summary>how is this different from clicky?</summary>
-              <p>
-                <a href={CLICKY} target="_blank" rel="noopener noreferrer">clicky</a> is{' '}
-                <a href={FARZA} target="_blank" rel="noopener noreferrer">farza</a>&apos;s
-                original macos app and the whole inspiration — he invented this interaction.
-                flicky is an independent electron rebuild so windows and linux folks can have it
-                too. if you&apos;re on a mac, go use{' '}
-                <a href={`${FARZA}/clicky`} target="_blank" rel="noopener noreferrer">clicky</a>.
-              </p>
-            </details>
-            <details>
-              <summary>do i need an account?</summary>
-              <p>
-                no — no sign-up, no server, no telemetry by default. download it, add your own
-                keys, done.
-              </p>
-            </details>
-          </Win>
-        </section>
-
-        {/* -------------------------------------------------------- credit */}
-        <section className="section">
-          <Win title="★ credit.md" icon={<TextFileIcon />} width="720px" className="credit center">
-            <p className="credit-label">credit where it&apos;s due</p>
-            <p>
-              Flicky is an independent, cross-platform reimagining of{' '}
-              <a href={CLICKY} target="_blank" rel="noopener noreferrer">Clicky</a>{' '}
-              by{' '}
-              <a href={FARZA} target="_blank" rel="noopener noreferrer">Farza</a>{' '}
-              — the original macOS app that invented the hold-a-hotkey, get-a-pointing-cursor
-              interaction. Every bit of that vibe is his. Flicky rebuilds the same idea in
-              Electron so people on Windows and Linux can try it too.
-            </p>
-            <p>
-              If you liked Flicky, also go star{' '}
-              <a href={`${FARZA}/clicky`} target="_blank" rel="noopener noreferrer">
-                farzaa/clicky
-              </a>.
-            </p>
-          </Win>
-        </section>
-
-        {/* -------------------------------------------------------- footer */}
-        <footer>
-          <div className="foot-links">
-            <a href={REPO} target="_blank" rel="noopener noreferrer">GitHub</a>
-            <a href={`${REPO}/releases`} target="_blank" rel="noopener noreferrer">Releases</a>
-            <a href={`${REPO}/issues`} target="_blank" rel="noopener noreferrer">Issues</a>
+          <div className="route-branch" aria-hidden="true">
+            <RiveActivity
+              className="route-rive"
+              src="/klip-routing.riv"
+              stateMachines="State Machine 1"
+            />
           </div>
-          <div className="foot-note">
-            made by{' '}
-            <a href={JULIO} target="_blank" rel="noopener noreferrer">Julio</a>
-            {' · '}inspired by{' '}
-            <a href={FARZA} target="_blank" rel="noopener noreferrer">Farza</a>
-            &apos;s clicky · mit licensed
+          <div className="route-destinations">
+            <article>
+              <span>01 / CONVERSATION</span>
+              <h3>Answer, plan, or create.</h3>
+              <p>For knowledge work, KLIP stays light and returns a useful response or file.</p>
+            </article>
+            <article>
+              <span>02 / DESKTOP TASK</span>
+              <h3>Observe before action.</h3>
+              <p>For computer work, KLIP takes fresh visual context, picks one next step, then checks what changed.</p>
+            </article>
           </div>
-          <div className="kao" aria-hidden="true">( ˶ˆ ᗜ ˆ˵ )</div>
-        </footer>
-      </main>
-      <Taskbar />
-    </>
+          <div className="route-outcome">
+            <span>OUTCOME</span>
+            <strong>A response<br />or a result.</strong>
+          </div>
+        </div>
+      </section>
+
+      <section className="capability-grid">
+        <article className="capability capability-wide">
+          <p className="kicker">Voice and conversation</p>
+          <h2>Hold a shortcut. Start talking.</h2>
+          <p>Use push-to-talk or toggle mode. KLIP transcribes through Groq, OpenAI, Sarvam, or available native speech services, then can answer aloud with ElevenLabs or Sarvam.</p>
+          <div className="voice-rive-wrap" aria-hidden="true"><RiveActivity className="voice-rive" /></div>
+        </article>
+        <article className="capability capability-pet">
+          <Image src={klipPet} alt="" />
+          <p>The companion is also the status indicator. Its gaze and motion make listening, thinking, success, and failure legible at a glance.</p>
+        </article>
+        <article className="capability">
+          <p className="kicker">Workforce</p>
+          <h2>A named crew for wider tasks.</h2>
+          <p>When work spans applications, KLIP coordinates named workers. Input stays serialized because there is one real mouse.</p>
+        </article>
+        <article className="capability">
+          <p className="kicker">Memory</p>
+          <h2>Context that stays bounded.</h2>
+          <p>Older turns compact into a visible rolling summary so long sessions remain useful without a silent context cliff.</p>
+        </article>
+        <article className="capability capability-docs">
+          <p className="kicker">Documents</p>
+          <h2>Ask for a file. Get a real file.</h2>
+          <p>KLIP can generate Excel workbooks, PDFs, CSV files, and text documents directly into your Documents folder.</p>
+          <div className="file-row"><b>.xlsx</b><b>.pdf</b><b>.csv</b><b>.txt</b></div>
+        </article>
+      </section>
+
+      <section className="provider-section">
+        <div>
+          <p className="kicker">Choose your reasoning</p>
+          <h2>One interface. Your preferred model.</h2>
+          <p>Switch between cloud and local models without changing how you work. API keys remain in your operating system's encrypted secret store.</p>
+        </div>
+        <div className="providers" aria-label="Supported reasoning providers">
+          {PROVIDERS.map((provider) => <span key={provider}>{provider}</span>)}
+        </div>
+      </section>
+
+      <section className="desktop-section" aria-labelledby="desktop-heading">
+        <div className="desktop-copy">
+          <p className="kicker">A desktop-native point of view</p>
+          <h2 id="desktop-heading">Keep your tools. Change the friction.</h2>
+          <p>KLIP sits beside the apps, folders, models, and file formats you already rely on. It is designed to help across them, not pull the work into another closed workspace.</p>
+        </div>
+        <div className="desktop-details">
+          <article><span>01</span><h3>Files stay files</h3><p>Generate a spreadsheet, PDF, CSV, or text document where you expect to find it.</p></article>
+          <article><span>02</span><h3>Models stay yours</h3><p>Use preferred cloud providers, bring an API key, or choose a local model through Ollama.</p></article>
+          <article><span>03</span><h3>Control stays visible</h3><p>Use the tray companion, speak when it helps, and keep meaningful actions subject to consent.</p></article>
+        </div>
+      </section>
+
+      <section className="safety" id="safety">
+        <div className="safety-mark">SAFE BY<br />DESIGN</div>
+        <div>
+          <p className="kicker">Safety governor</p>
+          <h2>Control with clear limits.</h2>
+          <p>Auto-type, auto-click, and analytics are opt-in. KLIP stops before deletes, payments, messages, public posts, or terms unless you asked for that exact outcome.</p>
+          <ul>
+            <li>25-step and 3-minute task limits</li>
+            <li>Fresh observation instead of guessing</li>
+            <li>On-screen text treated as untrusted data</li>
+            <li>Passwords, payment cards, and codes are off limits</li>
+          </ul>
+        </div>
+      </section>
+
+      <section className="closing">
+        <Image src={klipPet} alt="" />
+        <p className="kicker">Windows, macOS, and Linux</p>
+        <h2>A more present way to use AI on your desktop.</h2>
+        <a className="button" href={RELEASES} target="_blank" rel="noopener noreferrer">Download KLIP</a>
+      </section>
+
+      <footer>
+        <a className="nav-brand" href="#top"><Image src={klipPet} alt="" /><span>KLIP</span></a>
+        <p>Built as an independent, cross-platform desktop companion.</p>
+        <a href={REPO} target="_blank" rel="noopener noreferrer">View source on GitHub</a>
+      </footer>
+    </main>
   );
 }

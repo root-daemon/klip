@@ -1,75 +1,70 @@
 # KLIP
 
-A voice-driven, screen-aware AI companion that lives in the corner of your screen. Hold a hotkey, talk to it, and a small glowing pet glides across your display to point at whatever it's referring to.
+KLIP is a voice-driven, screen-aware AI companion for your desktop. Hold a hotkey, ask a question, and KLIP can use what is on your screen to answer in context—then speak, stream, or point you to the exact thing it is describing.
 
-> **Inspired by [Clicky](https://www.clicky.so/)** by [Farza](https://github.com/farzaa) ([github.com/farzaa/clicky](https://github.com/farzaa/clicky)).
-> Clicky is the original idea — a macOS-only Swift app. KLIP is an independent reimagining built from scratch in Electron so the same experience can run on **Windows, macOS, and Linux**. All credit for the original concept, the pointing-cursor interaction, and the "vibe" goes to Farza. If you're on a Mac, go check out the original — it's great.
+It is an independent, cross-platform reimagining of the interaction pioneered by [Clicky](https://www.clicky.so/) from [Farza](https://github.com/farzaa). KLIP is built from scratch with Electron for Windows, macOS, and Linux.
 
----
+## What it does
 
-## What KLIP adds on top of the original idea
+- Uses a global hotkey for push-to-talk or toggle-to-talk conversations.
+- Captures screen context so you do not have to narrate your UI or paste screenshots.
+- Guides you with a cursor-aware overlay and step-by-step walkthroughs.
+- Supports Anthropic, OpenAI, Google Gemini, Ollama, and compatible local endpoints.
+- Supports ElevenLabs and Sarvam AI for speech, plus Groq Whisper and Sarvam for transcription.
+- Keeps chats and provider keys on-device; keys use Electron's platform storage encryption.
+- Maintains long conversations by compacting older context into useful summaries.
+- Works across multiple displays and provides a setup flow for permissions, microphone, keys, and shortcuts.
 
-- **A living pet character** — a circular, glowing companion with no mouth and two capsule eyes that blink, look around, and react (idle / listening / thinking / speaking / success / error) through a real emotion state machine, animated with Framer Motion.
-- **Cross-platform** — Windows, macOS, and Linux from a single Electron codebase.
-- **Three reasoning providers** — pick between **Anthropic Claude** (Sonnet / Opus 4.6), **OpenAI** (GPT-5, GPT-5 mini, GPT-4o), and **Google Gemini** (2.5 Pro / Flash, with Google Search grounding) on the fly.
-- **Two voice (TTS) providers** — **ElevenLabs**' full voice catalog with speed/stability tuning, or **Sarvam AI**'s Bulbul v2 speakers for strong multilingual and Indian-language output.
-- **Two transcription (STT) providers** — **Groq** Whisper (fast, English-tuned) or **Sarvam AI** Saarika v2.5 (auto language detection, strong on Indian and code-switched speech).
-- **Local chat history** — every conversation is stored on your machine, browsable from the panel, never uploaded.
-- **Long-running context management** — auto-compacts older messages into a summary near a configurable token budget so a single conversation can run forever without blowing up the context window.
-- **Customizable push-to-talk shortcut** — capture any key combination from the UI; the global shortcut re-registers live.
-- **Multiple reasoning depths** — off / medium / deep "extended thinking" toggle.
-- **Multi-display aware overlay** — the pet follows your real mouse across monitors.
-- **Provider key management** — separate, encrypted local storage for each provider's API key with one-click validation.
+## Quick start
 
-The core loop — hold the hotkey, ask anything, watch the pet point — is faithful to Farza's original.
-
----
-
-## Running locally
-
-Requires [Bun](https://bun.sh) (or npm) and Node 20+.
+Requirements: [Bun](https://bun.sh), Node.js 20+, and a desktop platform supported by Electron.
 
 ```bash
 bun install
 bun run dev
 ```
 
-That starts the TypeScript watcher for the main process and Vite for the renderer. Launch the Electron app from a separate terminal once the dev servers are up:
+In a second terminal, launch the app after the TypeScript and renderer watchers are ready:
 
 ```bash
 bun run start
 ```
 
-## Building installers
+## Configure providers
+
+Add and validate provider keys from KLIP's onboarding flow or **Settings**. You only need the services you intend to use:
+
+- **Reasoning:** Anthropic, OpenAI, Google Gemini, or a local OpenAI-compatible endpoint
+- **Text to speech:** ElevenLabs or Sarvam AI
+- **Speech to text:** Groq or Sarvam AI
+
+KLIP stores keys locally using Electron's `safeStorage`; provider requests go directly to the service you select. An account is not required for local use.
+
+## Build installers
 
 ```bash
-bun run package          # current platform
-bun run package:win      # Windows .exe (NSIS)
-bun run package:mac      # macOS .dmg + .zip (universal)
-bun run package:linux    # AppImage + .deb
+bun run package          # Current platform
+bun run package:win      # Windows NSIS installer
+bun run package:mac      # macOS DMG and ZIP
+bun run package:linux    # Linux AppImage and DEB
 ```
 
-Releases are also produced automatically by GitHub Actions on every `v*` tag — see [`.github/workflows/build.yml`](.github/workflows/build.yml).
+## Landing page
 
-## Configuration
+The marketing site lives in [`landing`](landing). It is a static Next.js export and can be deployed to Vercel, GitHub Pages, or any static host.
 
-You'll need API keys for the providers you want to use — everything is added and validated live inside the app, either during first-run setup or later from the panel:
+```bash
+cd landing
+bun install
+bun run dev
+```
 
-- **Mind (reasoning)** — Anthropic, OpenAI, or Gemini
-- **Voice (text-to-speech)** — ElevenLabs or Sarvam AI
-- **Ear (speech-to-text)** — Groq or Sarvam AI
+Run `bun run build` to create the deployable static site in `landing/out`.
 
-Keys are stored locally with platform-appropriate encryption (Windows DPAPI / macOS Keychain / Linux libsecret via Electron's `safeStorage`) — they never leave your machine except in API calls to the relevant provider.
+## Optional cloud preferences
 
-## Optional AWS accounts
+KLIP can optionally use Amazon Cognito, API Gateway, Lambda, and DynamoDB to save portable preferences across devices. Local use remains fully functional without this. See [the AWS backend guide](docs/aws-backend.md).
 
-KLIP can use Amazon Cognito for in-app sign-in and API Gateway, Lambda, and
-DynamoDB to save and restore portable preferences across devices. Configure the
-backend, then open **General → Account & preferences**. Local use does not require
-an account. See [AWS setup, architecture, and tests](docs/aws-backend.md).
+## License and credit
 
-## License
-
-MIT — see [LICENSE](LICENSE).
-
-The original Clicky project is the intellectual seed for this work; KLIP is an independent implementation and does not bundle or redistribute Clicky's source. If you like what's here, please also star [Farza's repo](https://github.com/farzaa/clicky).
+MIT — see [LICENSE](LICENSE). Clicky is the inspiration for KLIP's core interaction; KLIP does not bundle or redistribute Clicky's source.

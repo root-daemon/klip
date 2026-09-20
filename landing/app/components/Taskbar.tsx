@@ -5,7 +5,7 @@ import { Clock } from './Clock';
 import { ThemeToggle } from './ThemeToggle';
 import { WinLogo, GitHubGlyph, DownloadGlyph, WifiGlyph, SpeakerGlyph } from './Icons';
 
-const REPO = 'https://github.com/pango07/flicky';
+const REPO = 'https://github.com/root-daemon/klip';
 const RELEASES = `${REPO}/releases/latest`;
 
 /**
@@ -20,7 +20,7 @@ export function Taskbar() {
         <a className="tb-btn" href="#top" title="start">
           <WinLogo className="tb-glyph" />
         </a>
-        <a className="tb-btn running" href="#top" title="flicky.exe — running">
+        <a className="tb-btn running" href="#top" title="klip.exe — running">
           <Mark className="tb-mark" />
         </a>
         <a

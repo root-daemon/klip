@@ -1,6 +1,6 @@
-# Flicky landing page
+# KLIP landing page
 
-Next.js 16 static site for [flicky](https://github.com/pango07/flicky).
+Next.js 16 static site for [KLIP](https://github.com/root-daemon/klip).
 Built as a static export so it can be dropped onto GitHub Pages, Vercel,
 Netlify, Cloudflare Pages, or any plain static host.
 
@@ -21,6 +21,12 @@ bun run build
 ```
 
 Produces a static bundle in `landing/out/`.
+
+## Motion
+
+The companion-state panel uses the local `public/klip-activity.riv` asset with
+the `@rive-app/react-canvas` runtime. It is client-only, dynamically loaded,
+and automatically settles to a static indicator for `prefers-reduced-motion`.
 
 ## Deploy
 

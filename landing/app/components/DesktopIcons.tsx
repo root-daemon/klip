@@ -1,7 +1,7 @@
 import { Mark } from './Mark';
 import { FolderIcon, InstallerIcon, TextFileIcon, ZipIcon } from './Icons';
 
-const REPO = 'https://github.com/pango07/flicky';
+const REPO = 'https://github.com/root-daemon/klip';
 
 /**
  * The desktop icon column, top-left, exactly where Windows puts them.
@@ -13,7 +13,7 @@ export function DesktopIcons() {
     <div className="desk-icons" aria-hidden="false">
       <a className="desk-icon" href="#top">
         <span className="desk-art"><Mark className="desk-mark" /></span>
-        <span className="desk-label">flicky.exe</span>
+        <span className="desk-label">klip.exe</span>
       </a>
       <a className="desk-icon" href="#how">
         <span className="desk-art"><FolderIcon /></span>
@@ -25,7 +25,7 @@ export function DesktopIcons() {
       </a>
       <a className="desk-icon" href="#get">
         <span className="desk-art"><InstallerIcon /></span>
-        <span className="desk-label">get flicky</span>
+        <span className="desk-label">get klip</span>
       </a>
       <a className="desk-icon" href="#faq">
         <span className="desk-art"><TextFileIcon /></span>

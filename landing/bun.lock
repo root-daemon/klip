@@ -5,6 +5,7 @@
     "": {
       "name": "flicky-landing",
       "dependencies": {
+        "@rive-app/react-canvas": "^4.34.3",
         "next": "^16.2.3",
         "react": "^19.2.5",
         "react-dom": "^19.2.5",
@@ -92,6 +93,10 @@
     "@next/swc-win32-arm64-msvc": ["@next/swc-win32-arm64-msvc@16.2.3", "", { "os": "win32", "cpu": "arm64" }, "sha512-O2NZ9ie3Tq6xj5Z5CSwBT3+aWAMW2PIZ4egUi9MaWLkwaehgtB7YZjPm+UpcNpKOme0IQuqDcor7BsW6QBiQBw=="],
 
     "@next/swc-win32-x64-msvc": ["@next/swc-win32-x64-msvc@16.2.3", "", { "os": "win32", "cpu": "x64" }, "sha512-Ibm29/GgB/ab5n7XKqlStkm54qqZE8v2FnijUPBgrd67FWrac45o/RsNlaOWjme/B5UqeWt/8KM4aWBwA1D2Kw=="],
+
+    "@rive-app/canvas": ["@rive-app/canvas@2.42.2", "", {}, "sha512-NlSngaccl6L0XambU8XuK+0MT9cIbQBQrBod+/tWPLIjL/G82cXs7c6hj6wdrfk9YSVj8ZNuXcUEKoEo6YABYg=="],
+
+    "@rive-app/react-canvas": ["@rive-app/react-canvas@4.34.3", "", { "dependencies": { "@rive-app/canvas": "2.42.2" }, "peerDependencies": { "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0" } }, "sha512-imxE0KGOQ45dZq84rBzWu/IFsabra71rwcpJi/dVw7o/WzOwhL+ueQ44545ODS2zUzw3E5e30ogQMf5VLXzi8w=="],
 
     "@swc/helpers": ["@swc/helpers@0.5.15", "", { "dependencies": { "tslib": "^2.8.0" } }, "sha512-JQ5TuMi45Owi4/BIMAJBoSQoOJu12oOk/gADqlcUL9JEdHB8vyjUSsxqeNXnmXHjYKMi2WcYtezGEEhqUI/E2g=="],
 

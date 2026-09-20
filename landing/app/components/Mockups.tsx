@@ -57,7 +57,7 @@ export function MockSpeak() {
         </div>
         <p className="stream-you"><b>you:</b> what am i looking at?</p>
         <p className="stream-fl">
-          <b>flicky:</b> that&apos;s the vercel deploy log — the red line is a missing env var.
+          <b>klip:</b> that&apos;s the vercel deploy log — the red line is a missing env var.
         </p>
       </div>
     </div>

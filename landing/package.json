@@ -1,5 +1,5 @@
 {
-  "name": "flicky-landing",
+  "name": "klip-landing",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@rive-app/react-canvas": "^4.34.3",
     "next": "^16.2.3",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",

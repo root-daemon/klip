@@ -14,7 +14,7 @@ interface PointAtProps {
 }
 
 /**
- * The page pointing at itself. A blue Flicky cursor parks in the
+ * The page pointing at itself. A blue KLIP cursor parks in the
  * bottom-right of its section, then flies to `target` with the same
  * springy easing the real overlay uses and pops a little bubble.
  */

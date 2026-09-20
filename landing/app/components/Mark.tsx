@@ -4,7 +4,7 @@ interface MarkProps {
 }
 
 /**
- * The Flicky triangle, as an inline SVG. Uses a shared gradient id
+ * The KLIP triangle, as an inline SVG. Uses a shared gradient id
  * because the landing page only renders it a handful of times and
  * collision isn't a concern.
  */

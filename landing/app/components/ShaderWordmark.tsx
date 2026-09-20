@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from 'react';
  * - Off-screen or hidden tab -> loop paused.
  * - Theme toggle -> re-tinted on the next frame.
  */
-export function ShaderWordmark({ text = 'flicky' }: { text?: string }) {
+export function ShaderWordmark({ text = 'klip' }: { text?: string }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const h1Ref = useRef<HTMLHeadingElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);

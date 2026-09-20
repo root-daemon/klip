@@ -4,13 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Mark } from './Mark';
 
 /**
- * Page-wide companion cursor — mirrors the real Flicky overlay: the
+ * Page-wide companion cursor — mirrors the real KLIP overlay: the
  * blue triangle trails your real mouse at the same +14px / +8px
  * offset the desktop app uses. Pointer-events are off so it never
  * blocks clicks or text selection, and it's hidden entirely on
  * touch / no-hover devices since there's nothing to follow.
  */
-export function FlickyCursor() {
+export function KlipCursor() {
   const [visible, setVisible] = useState(false);
   const elRef = useRef<HTMLDivElement | null>(null);
 
@@ -60,11 +60,11 @@ export function FlickyCursor() {
   return (
     <div
       ref={elRef}
-      className="flicky-cursor"
+      className="klip-cursor"
       aria-hidden="true"
       style={{ opacity: visible ? 1 : 0 }}
     >
-      <Mark className="flicky-cursor-mark" />
+      <Mark className="klip-cursor-mark" />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-// flicky wordmark — the hero headline as a live WebGPU surface.
+// KLIP wordmark — the hero headline as a live WebGPU surface.
 //
 // The glyphs come in as a mask texture rasterized by the DOM font
 // (R = sharp coverage, G = blurred coverage for the halo). Inside the
@@ -25,7 +25,7 @@ struct Params {
 @group(0) @binding(2) var samp: sampler;
 
 fn palette(t: f32, theme: f32) -> vec3f {
-  // light: deep royal -> flicky blue -> sky -> near-white highlight
+  // light: deep royal -> KLIP blue -> sky -> near-white highlight
   let l0 = vec3f(0.114, 0.306, 0.847); // #1d4ed8
   let l1 = vec3f(0.145, 0.388, 0.922); // #2563eb
   let l2 = vec3f(0.220, 0.741, 0.973); // #38bdf8

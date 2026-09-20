@@ -33,7 +33,7 @@ export function HeroVideo() {
   }, []);
 
   return (
-    <Win title="flicky-demo.mp4" className="video-win" flush>
+    <Win title="klip-demo.mp4" className="video-win" flush>
       <video
         ref={ref}
         src="/flicky-hero2-1776235182036.mp4"
@@ -42,7 +42,7 @@ export function HeroVideo() {
         loop
         playsInline
         preload="metadata"
-        aria-label="Flicky answering a question about what's on screen"
+        aria-label="KLIP answering a question about what's on screen"
       />
     </Win>
   );
