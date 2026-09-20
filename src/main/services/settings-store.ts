@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { app } from 'electron';
 import { writeFileAtomic } from './fs-util';
+import { parsePreferences, type CloudPreferences } from '../../shared/cloud';
 import type {
   ClaudeModel,
   OpenAIModel,
@@ -144,4 +145,11 @@ export function set<K extends keyof StoredSettings>(key: K, value: StoredSetting
 export function getAll(): StoredSettings {
   // Shallow copy so callers can't mutate the cache through the returned ref.
   return { ...ensureLoaded() };
+}
+
+/** Persist the entire restored preference set before exposing it to the running app. */
+export function setPreferences(preferences: CloudPreferences): void {
+  const next = { ...ensureLoaded(), ...parsePreferences(preferences) };
+  write(next);
+  cache = next;
 }

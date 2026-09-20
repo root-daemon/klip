@@ -1,0 +1,33 @@
+name: Cloud accounts
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local:latest
+        ports: ['8000:8000']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: bun install --frozen-lockfile --ignore-scripts
+      - run: bun install --cwd backend --frozen-lockfile --ignore-scripts
+      - run: bun test tests backend/tests
+        env:
+          KLIP_DYNAMODB_TEST_ENDPOINT: http://127.0.0.1:8000
+      - run: bun run typecheck
+      - run: bun run --cwd backend typecheck
+      - run: bun run build
+      - run: bun run --cwd backend build
+      - run: pip install cfn-lint==1.57.0
+      - run: cfn-lint backend/template.yaml

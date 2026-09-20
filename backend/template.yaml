@@ -1,0 +1,287 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: KLIP optional account and preference-sync backend. Desktop AI, credentials and conversations remain local.
+Metadata:
+  AWSToolsMetrics:
+    AWSAgentToolkit: aws-cloudformation@2
+Parameters:
+  DomainPrefix:
+    Type: String
+    Description: Globally unique lowercase Cognito domain prefix for this environment.
+    AllowedPattern: '^[a-z0-9][a-z0-9-]{1,50}[a-z0-9]$'
+Transform: AWS::Serverless-2016-10-31
+Resources:
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Accounts are independent of desktop provider keys; verified native sign-in receives the preference scope.
+        must:
+          - Retain accounts on stack deletion or replacement.
+    Properties:
+      LambdaConfig:
+        PreTokenGenerationConfig:
+          LambdaArn: !GetAtt TokenScopeFunction.Arn
+          LambdaVersion: V2_0
+      UserPoolTier: ESSENTIALS
+      UsernameAttributes: [email]
+      UsernameConfiguration: { CaseSensitive: false }
+      AutoVerifiedAttributes: [email]
+      AccountRecoverySetting:
+        RecoveryMechanisms: [{ Name: verified_email, Priority: 1 }]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+      MfaConfiguration: OPTIONAL
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
+  TokenScopeFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Native Cognito API tokens need the same narrow preference scope as OAuth tokens.
+        must:
+          - Issue scope only for verified email accounts; keep the API scope check intact.
+          - Never log tokens or user attributes.
+    Properties:
+      CodeUri: dist/
+      Handler: token-scope.handler
+      Runtime: nodejs22.x
+      Architectures: [arm64]
+      MemorySize: 128
+      Timeout: 5
+  TokenScopePermission:
+    Type: AWS::Lambda::Permission
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Only this account and user pool may invoke the token hook.
+        must:
+          - Restrict the Cognito service principal by source account and pool ARN.
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref TokenScopeFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt UserPool.Arn
+  TokenScopeLogs:
+    Type: AWS::Logs::LogGroup
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Bound retention for token-hook diagnostics.
+        must:
+          - Never log tokens or user attributes.
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${TokenScopeFunction}'
+      RetentionInDays: 14
+  ResourceServer:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: A dedicated scope prevents ID tokens from authorizing preference requests.
+        must:
+          - Keep the identifier and scope aligned with the desktop client.
+    Properties:
+      UserPoolId: !Ref UserPool
+      Identifier: klip
+      Name: KLIP preferences
+      Scopes: [{ ScopeName: preferences, ScopeDescription: Read and update your own preferences }]
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn: ResourceServer
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Electron is a public client using native password authentication over TLS; retain OAuth for older clients.
+        must:
+          - No client secret or implicit grant; keep callback URL aligned with the loopback listener.
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email, klip/preferences]
+      SupportedIdentityProviders: [COGNITO]
+      CallbackURLs: ['http://localhost:43827/callback']
+      LogoutURLs: ['http://localhost:43827/logout']
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      AccessTokenValidity: 5
+      IdTokenValidity: 5
+      RefreshTokenValidity: 1
+      TokenValidityUnits: { AccessToken: minutes, IdToken: minutes, RefreshToken: days }
+      ExplicitAuthFlows: [ALLOW_USER_SRP_AUTH, ALLOW_USER_PASSWORD_AUTH]
+      RefreshTokenRotation: { Feature: ENABLED, RetryGracePeriodSeconds: 10 }
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Cognito hosts sign-up, email verification, login and password recovery.
+        must:
+          - Managed login requires a branding resource for each app client.
+    Properties:
+      UserPoolId: !Ref UserPool
+      Domain: !Ref DomainPrefix
+      ManagedLoginVersion: 2
+  LoginBranding:
+    Type: AWS::Cognito::ManagedLoginBranding
+    DependsOn: UserPoolDomain
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Provision default branding so managed login works without console setup.
+        must:
+          - Keep attached to the desktop app client.
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientId: !Ref UserPoolClient
+      UseCognitoProvidedValues: true
+  Preferences:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: One small preference document per authenticated Cognito subject; no scans or indexes needed.
+        must:
+          - Derive userId from verified claims, use conditional writes, and retain data.
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions: [{ AttributeName: userId, AttributeType: S }]
+      KeySchema: [{ AttributeName: userId, KeyType: HASH }]
+      DeletionProtectionEnabled: true
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+  ApiLogs:
+    Type: AWS::Logs::LogGroup
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Operational request metadata without bodies, tokens or user identifiers.
+        must:
+          - Bound log retention.
+    Properties:
+      RetentionInDays: 14
+  Api:
+    Type: AWS::Serverless::HttpApi
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Native JWT validation protects the preference API.
+        must:
+          - Require the user pool issuer, desktop client audience and preference scope on every route.
+    Properties:
+      StageName: '$default'
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiLogs.Arn
+        Format: '{"requestId":"$context.requestId","status":"$context.status","route":"$context.routeKey"}'
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+      Auth:
+        DefaultAuthorizer: Cognito
+        Authorizers:
+          Cognito:
+            IdentitySource: '$request.header.Authorization'
+            JwtConfiguration:
+              issuer: !Sub 'https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${UserPool}'
+              audience: [!Ref UserPoolClient]
+            AuthorizationScopes: [klip/preferences]
+  PreferencesFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: One synchronous handler validates and reads or conditionally replaces preferences.
+        must:
+          - Only GetItem and PutItem on the preference table; never store credentials or chat content.
+    Properties:
+      CodeUri: dist/
+      Handler: index.handler
+      Runtime: nodejs22.x
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 10
+      Environment:
+        Variables:
+          PREFERENCES_TABLE: !Ref Preferences
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:PutItem]
+              Resource: !GetAtt Preferences.Arn
+      Events:
+        Read:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /preferences, Method: GET }
+        Write:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /preferences, Method: PUT }
+  FunctionLogs:
+    Type: AWS::Logs::LogGroup
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Retain bounded Lambda diagnostics.
+        must:
+          - Never log preference payloads or authentication tokens.
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${PreferencesFunction}'
+      RetentionInDays: 14
+  FunctionErrors:
+    Type: AWS::CloudWatch::Alarm
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Surface unexpected Lambda failures in CloudWatch.
+        must:
+          - Connect alarm actions to an operator notification channel before production.
+    Properties:
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{ Name: FunctionName, Value: !Ref PreferencesFunction }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+  ApiErrors:
+    Type: AWS::CloudWatch::Alarm
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Handled storage failures return HTTP 503 and do not increment the Lambda Errors metric.
+        must:
+          - Connect alarm actions to an operator notification channel before production.
+    Properties:
+      Namespace: AWS/ApiGateway
+      MetricName: 5xx
+      Dimensions: [{ Name: ApiId, Value: !Ref Api }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+  WriteThrottles:
+    Type: AWS::CloudWatch::Alarm
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: Detect write throttling even with on-demand capacity.
+        must:
+          - Connect alarm actions to an operator notification channel before production.
+    Properties:
+      Namespace: AWS/DynamoDB
+      MetricName: WriteThrottleEvents
+      Dimensions: [{ Name: TableName, Value: !Ref Preferences }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+Outputs:
+  ApiUrl:
+    Description: KLIP_CLOUD_API_URL
+    Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}'
+  AuthDomain:
+    Description: KLIP_CLOUD_AUTH_DOMAIN
+    Value: !Sub 'https://${DomainPrefix}.auth.${AWS::Region}.amazoncognito.com'
+  ClientId:
+    Description: KLIP_CLOUD_CLIENT_ID
+    Value: !Ref UserPoolClient
