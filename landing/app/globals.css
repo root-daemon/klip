@@ -8,7 +8,6 @@
   --muted: #aaa7a2;
   --accent: #ed462d;
   --accent-light: #ff725d;
-  --success: #34d399;
   --pointer-x: 68%;
   --pointer-y: 30%;
   --mono: var(--font-mono), monospace;
@@ -283,7 +282,7 @@ footer a:hover { color: var(--accent-light); }
 .state-legend i,
 .live-state > p i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
 .state-legend .state-thinking { box-shadow: 0 0 0 4px rgb(237 70 45 / 18%); }
-.state-legend .state-finished { background: var(--success); }
+.state-legend .state-finished { background: var(--accent-light); }
 
 .live-state {
   overflow: hidden;
@@ -377,7 +376,6 @@ footer a:hover { color: var(--accent-light); }
 
 .command-chips span { display: flex; align-items: center; gap: 10px; }
 .command-chips i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 5px rgb(237 70 45 / 11%); }
-.command-chips span:nth-child(3) i { background: var(--success); box-shadow: 0 0 0 5px rgb(52 211 153 / 11%); }
 
 .command-console {
   position: relative;
@@ -465,7 +463,7 @@ footer a:hover { color: var(--accent-light); }
 .console-log b { color: var(--accent-light); font-weight: 500; }
 .console-log i { color: var(--accent-light); font-style: normal; text-transform: uppercase; animation: log-flicker 2.2s ease-in-out infinite; }
 .console-log p:nth-child(2) i { animation-delay: -0.73s; }
-.console-log p:nth-child(3) i { color: var(--success); animation-delay: -1.4s; }
+.console-log p:nth-child(3) i { animation-delay: -1.4s; }
 
 .demo-section { max-width: 1164px; margin: auto; padding: 70px 28px 130px; }
 .section-heading { max-width: 650px; margin-bottom: 38px; }
