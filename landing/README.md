@@ -24,9 +24,10 @@ Produces a static bundle in `landing/out/`.
 
 ## Motion
 
-The companion-state panel uses the local `public/klip-activity.riv` asset with
-the `@rive-app/react-canvas` runtime. It is client-only, dynamically loaded,
-and automatically settles to a static indicator for `prefers-reduced-motion`.
+The companion-state panels use the local `public/klip-activity.riv` asset with
+the `@rive-app/react-canvas` runtime. They run only in the browser and settle
+to a static indicator for `prefers-reduced-motion`. The signal asset is adapted
+from Rive's MIT-licensed React example; see `RIVE_ASSET_LICENSE.md`.
 
 ## Deploy
 

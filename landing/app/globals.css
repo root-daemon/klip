@@ -224,17 +224,18 @@ footer a:hover { color: var(--accent-light); }
 .hero-rive-wrap {
   position: absolute;
   z-index: 1;
-  right: -8px;
-  bottom: 27px;
+  right: 50%;
+  bottom: 50%;
   display: grid;
-  width: 154px;
-  height: 154px;
+  width: min(28vw, 340px);
+  height: min(28vw, 340px);
   place-items: center;
-  opacity: 0.78;
+  opacity: 0.43;
   pointer-events: none;
+  transform: translate(50%, 50%);
 }
 
-.hero-rive { width: 154px; height: 154px; }
+.hero-rive { width: 100% !important; height: 100% !important; border-radius: 50%; overflow: hidden; }
 
 .hero-companion p {
   position: absolute;
@@ -322,7 +323,8 @@ footer a:hover { color: var(--accent-light); }
 
 .rive-canvas,
 .rive-fallback { position: relative; z-index: 1; width: 220px; height: 220px; }
-.rive-canvas canvas { width: 100%; height: 100%; }
+.rive-canvas { border-radius: 50%; overflow: hidden; filter: hue-rotate(45deg) saturate(1.25) brightness(0.9); mix-blend-mode: screen; }
+.rive-canvas canvas { width: 100% !important; height: 100% !important; }
 
 .rive-fallback { display: flex; align-items: center; justify-content: center; gap: 12px; }
 .rive-fallback span { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
@@ -723,8 +725,8 @@ footer p { margin: 0; }
   .hero h1 { font-size: clamp(46px, 15vw, 68px); }
   .hero-companion { order: -1; min-height: 310px; }
   .hero-companion > img { width: 255px; height: 255px !important; }
-  .hero-rive-wrap { right: 8px; bottom: 12px; width: 112px; height: 112px; }
-  .hero-rive { width: 112px; height: 112px; }
+  .hero-rive-wrap { right: 50%; bottom: 50%; width: 230px; height: 230px; transform: translate(50%, 50%); }
+  .hero-rive { width: 100% !important; height: 100% !important; }
   .orbit-one { width: 310px; height: 140px; }
   .orbit-two { width: 210px; height: 320px; }
   .intro { padding: 88px 22px; }
@@ -769,41 +771,4 @@ footer p { margin: 0; }
     animation: none !important;
     transition: none !important;
   }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  @supports (animation-timeline: view()) {
-    .intro,
-    .state-section,
-    .command-deck,
-    .demo-section,
-    .routing-section,
-    .provider-section,
-    .desktop-section,
-    .safety,
-    .closing {
-      animation: section-reveal linear both;
-      animation-range: entry 7% cover 34%;
-      animation-timeline: view();
-    }
-
-    .loop-grid article,
-    .capability,
-    .providers span,
-    .desktop-details article {
-      animation: tile-reveal linear both;
-      animation-range: entry 8% cover 42%;
-      animation-timeline: view();
-    }
-  }
-}
-
-@keyframes section-reveal {
-  from { opacity: 0.12; transform: translateY(42px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes tile-reveal {
-  from { opacity: 0; transform: translateY(28px) scale(0.975); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
 }

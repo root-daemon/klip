@@ -12,20 +12,17 @@ import { useRive } from '@rive-app/react-canvas';
 interface RiveActivityProps {
   className?: string;
   src?: string;
-  stateMachines?: string | string[];
 }
 
 export function RiveActivity({
   className,
   src = '/klip-activity.riv',
-  stateMachines,
 }: RiveActivityProps) {
   const [motionAllowed, setMotionAllowed] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const { rive, RiveComponent } = useRive({
     src,
-    stateMachines,
-    autoplay: false,
+    autoplay: true,
     onLoadError: () => setLoadFailed(true),
   });
 
@@ -46,6 +43,15 @@ export function RiveActivity({
     media.addEventListener('change', updateMotion);
     return () => media.removeEventListener('change', updateMotion);
   }, [rive]);
+
+  useEffect(() => {
+    if (!rive || !motionAllowed) return;
+
+    // The local signal is a one-shot Rive timeline. Restart it periodically so
+    // the status surfaces remain alive without relying on a CSS imitation.
+    const replay = window.setInterval(() => rive.reset({ autoplay: true }), 3600);
+    return () => window.clearInterval(replay);
+  }, [motionAllowed, rive]);
 
   if (!motionAllowed || loadFailed) {
     return (

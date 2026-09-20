@@ -134,11 +134,7 @@ export default function Page() {
             <p>Voice or text enters once.</p>
           </div>
           <div className="route-branch" aria-hidden="true">
-            <RiveActivity
-              className="route-rive"
-              src="/klip-routing.riv"
-              stateMachines="State Machine 1"
-            />
+            <RiveActivity className="route-rive" />
           </div>
           <div className="route-destinations">
             <article>
