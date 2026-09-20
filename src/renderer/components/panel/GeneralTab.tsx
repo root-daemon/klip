@@ -208,6 +208,22 @@ export function GeneralTab({ settings, memory }: GeneralTabProps) {
         </div>
         <div className="row">
           <div className="row-main">
+            <div className="row-t">Allow KLIP to click for you</div>
+            <div className="row-s">
+              when off (default), KLIP only points at things — nothing on your machine is
+              actually clicked. when on, KLIP can move the mouse and click for real
+              {isMac && <> — requires <strong>Accessibility</strong> permission on macOS</>}.
+              only turn this on if you're comfortable with that.
+            </div>
+          </div>
+          <button
+            className={`toggle ${settings.autoClickEnabled ? 'on' : ''}`}
+            onClick={() => window.klip.setAutoClickEnabled(!settings.autoClickEnabled)}
+            aria-label="Toggle auto-click"
+          />
+        </div>
+        <div className="row">
+          <div className="row-main">
             <div className="row-t">Launch at login</div>
             <div className="row-s">open KLIP when you sign in</div>
           </div>

@@ -14,34 +14,36 @@
   background: linear-gradient(180deg, #ffffff, #8a8a92);
 }
 
-/* Pseudo-randomized resting heights per index */
-.wf-bar:nth-child(1)  { height: 30%; }
-.wf-bar:nth-child(2)  { height: 55%; }
-.wf-bar:nth-child(3)  { height: 85%; }
-.wf-bar:nth-child(4)  { height: 45%; }
-.wf-bar:nth-child(5)  { height: 72%; }
-.wf-bar:nth-child(6)  { height: 32%; }
-.wf-bar:nth-child(7)  { height: 60%; }
-.wf-bar:nth-child(8)  { height: 90%; }
-.wf-bar:nth-child(9)  { height: 40%; }
-.wf-bar:nth-child(10) { height: 65%; }
-.wf-bar:nth-child(11) { height: 35%; }
-.wf-bar:nth-child(12) { height: 78%; }
-.wf-bar:nth-child(13) { height: 48%; }
-.wf-bar:nth-child(14) { height: 88%; }
-.wf-bar:nth-child(15) { height: 42%; }
-.wf-bar:nth-child(16) { height: 60%; }
-.wf-bar:nth-child(17) { height: 30%; }
-.wf-bar:nth-child(18) { height: 70%; }
-.wf-bar:nth-child(19) { height: 50%; }
+/* Pseudo-randomized resting heights, as an 8-value cycle rather than a
+   fixed list of nth-child rules — covers any bar count (Home renders
+   23; the panel/overlay use fewer) instead of silently going flat
+   past whatever number the list happened to be written up to. */
+.wf-bar:nth-child(8n+1) { height: 30%; }
+.wf-bar:nth-child(8n+2) { height: 85%; }
+.wf-bar:nth-child(8n+3) { height: 48%; }
+.wf-bar:nth-child(8n+4) { height: 72%; }
+.wf-bar:nth-child(8n+5) { height: 38%; }
+.wf-bar:nth-child(8n+6) { height: 90%; }
+.wf-bar:nth-child(8n+7) { height: 55%; }
+.wf-bar:nth-child(8n+8) { height: 65%; }
 
 .wf-active .wf-bar {
   animation: wf-pulse 1.2s ease-in-out infinite;
 }
 
+/* "klip is talking" — the wave itself carries the brand accent, with a
+   soft glow and a per-bar duration/amplitude cycle instead of one
+   identical keyframe on every bar, so the row reads as speech rather
+   than a metronome. */
 .wf-responding .wf-bar {
-  background: linear-gradient(180deg, #e8e8ec, #8a8a92);
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
+  filter: drop-shadow(0 0 5px var(--pet-glow-soft));
+  animation-name: wf-talk;
 }
+.wf-responding .wf-bar:nth-child(3n)   { animation-duration: 0.62s; }
+.wf-responding .wf-bar:nth-child(3n+1) { animation-duration: 0.78s; }
+.wf-responding .wf-bar:nth-child(3n+2) { animation-duration: 0.9s; }
+.wf-responding .wf-bar:nth-child(4n)   { animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1); }
 
 .wf-quiet .wf-bar {
   opacity: 0.35;
@@ -56,6 +58,17 @@
 
 @keyframes wf-pulse {
   50% { transform: scaleY(0.3); opacity: 0.7; }
+}
+
+/* Wider, less uniform excursion than wf-pulse — dips near-flat then
+   overshoots past resting height, which combined with the per-bar
+   duration cycle above is what actually reads as "wavery" rather than
+   a synchronized pulse. */
+@keyframes wf-talk {
+  0%   { transform: scaleY(0.4); opacity: 0.8; }
+  35%  { transform: scaleY(1.15); opacity: 1; }
+  65%  { transform: scaleY(0.55); opacity: 0.85; }
+  100% { transform: scaleY(0.4); opacity: 0.8; }
 }
 
 @keyframes wf-breathe {

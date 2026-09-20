@@ -29,7 +29,18 @@
 /* ══════════════════════════════════════════════════════════════════
    Onboarding / setup wizard
    ══════════════════════════════════════════════════════════════════ */
-.ob { display: flex; height: 100%; background: var(--fl-bg); }
+.ob { display: flex; height: 100%; background: var(--fl-bg); position: relative; overflow: hidden; }
+.ob::before {
+  content: '';
+  position: absolute; inset: -15%;
+  background:
+    radial-gradient(560px 420px at 12% -5%, rgba(237, 70, 45, 0.22), transparent 62%),
+    radial-gradient(680px 520px at 105% 105%, rgba(255, 122, 77, 0.16), transparent 60%),
+    radial-gradient(420px 420px at 60% 40%, rgba(237, 70, 45, 0.09), transparent 65%);
+  pointer-events: none;
+  z-index: 0;
+}
+.ob > * { position: relative; z-index: 1; }
 .ob-rail {
   width: 220px; flex-shrink: 0;
   background: var(--fl-sidebar); border-right: 1px solid var(--fl-border);
@@ -73,8 +84,8 @@
 
 .ob-hero-icon { filter: drop-shadow(0 6px 18px var(--pet-glow-soft)); margin-bottom: 18px; }
 .ob-h1 {
-  font-family: 'Geist', system-ui, sans-serif;
-  font-weight: 700; font-size: 32px; letter-spacing: -0.035em; line-height: 1.05;
+  font-family: var(--font-display);
+  font-weight: 700; font-size: 30px; letter-spacing: -0.02em; line-height: 1.08;
   color: var(--fl-ink); margin: 0 0 12px;
 }
 .ob-h1 em { font-style: normal; color: var(--accent); }
@@ -93,7 +104,11 @@
 .ob-fine { font-size: 12.5px; color: var(--fl-dim); line-height: 1.55; margin: 0 0 8px; }
 
 .ob-card {
-  background: var(--fl-surface); border: 1px solid var(--fl-border);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
   border-radius: 16px; padding: 20px 22px; margin-bottom: 14px;
 }
 .ob-card-title { font-size: 13.5px; font-weight: 600; color: var(--fl-ink); margin-bottom: 6px; }
@@ -148,7 +163,7 @@
 .provider-logo.local { background: #2a2a30; color: #7dd3fc; }
 
 .ob-keys kbd {
-  font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; font-weight: 600;
+  font-family: var(--font-label); font-size: 12px; font-weight: 600;
   background: var(--fl-surface-2); border: 1px solid var(--fl-border-strong);
   border-bottom-width: 2px; border-radius: 6px; padding: 2px 8px; color: var(--fl-ink);
 }

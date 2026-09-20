@@ -7,11 +7,12 @@ import { VoiceTab } from './panel/VoiceTab';
 import { EarTab } from './panel/EarTab';
 import { GeneralTab } from './panel/GeneralTab';
 import { SettingsTab } from './panel/SettingsTab';
+import { AgentsTab } from './panel/AgentsTab';
 import { PermissionsBanner } from './panel/PermissionsBanner';
 import { Onboarding } from './panel/Onboarding';
-import { CursorIcon } from './CursorIcon';
+import { KlipPet } from './KlipPet';
 
-type Tab = 'home' | 'chats' | 'mind' | 'voice' | 'ear' | 'general' | 'settings';
+type Tab = 'home' | 'chats' | 'mind' | 'voice' | 'ear' | 'general' | 'settings' | 'agents';
 
 export function PanelApp() {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
@@ -84,7 +85,7 @@ export function PanelApp() {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="sidebar-logo">
-            <CursorIcon size={34} />
+            <KlipPet mood={voiceState} size={30} />
           </div>
           <div className="sidebar-title">KLIP</div>
         </div>
@@ -97,6 +98,9 @@ export function PanelApp() {
           {navItem('mind', 'Mind', '◈', { needs: mindNeeds })}
           {navItem('voice', 'Voice', '◉', { needs: settings.speakReplies && !apiKeyStatus[settings.ttsProvider] })}
           {navItem('ear', 'Ear', '◐', { needs: !apiKeyStatus[sttProvider] })}
+
+          <div className="nav-label">Crew</div>
+          {navItem('agents', 'Agents', '✦')}
 
           <div className="nav-label">System</div>
           {navItem('settings', 'Settings', '⚙')}
@@ -142,6 +146,7 @@ export function PanelApp() {
         {tab === 'mind' && <MindTab settings={settings} />}
         {tab === 'voice' && <VoiceTab settings={settings} />}
         {tab === 'ear' && <EarTab settings={settings} />}
+        {tab === 'agents' && <AgentsTab />}
         {tab === 'settings' && <SettingsTab settings={settings} />}
         {tab === 'general' && <GeneralTab settings={settings} memory={memory} />}
       </main>

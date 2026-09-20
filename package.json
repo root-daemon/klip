@@ -28,12 +28,15 @@
   },
   "dependencies": {
     "@nut-tree-fork/nut-js": "^4.2.6",
+    "exceljs": "^4.4.0",
     "framer-motion": "^11.18.2",
+    "pdfkit": "^0.20.2",
     "posthog-node": "^4.0.0"
   },
   "devDependencies": {
     "@electron/notarize": "^2.5.0",
     "@types/bun": "^1.4.2",
+    "@types/pdfkit": "^0.17.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
@@ -44,6 +47,7 @@
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0",
     "eslint": "^9.0.0",
+    "png2icons": "^2.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.7.0",

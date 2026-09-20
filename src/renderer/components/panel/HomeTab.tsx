@@ -1,14 +1,24 @@
-import { motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import type { KlipSettings, VoiceState, MemoryStats } from '../../../shared/types';
 import { Waveform } from '../Waveform';
 import { KlipPet } from '../KlipPet';
 import { Tour } from './Tour';
 
+const CAPABILITIES = [
+  "hi, i'm klip.",
+  'I can see your screen.',
+  'I can point at anything on it.',
+  'I can click and scroll for you.',
+  'I can type or fill in fields.',
+  'I can build a spreadsheet or a pdf.',
+];
+
 interface HomeTabProps {
   voiceState: VoiceState;
   settings: KlipSettings;
   memory: MemoryStats | null;
-  onNavigate: (tab: 'chats' | 'mind' | 'voice' | 'ear' | 'general') => void;
+  onNavigate: (tab: 'chats' | 'mind' | 'voice' | 'ear' | 'general' | 'agents' | 'settings') => void;
 }
 
 function formatTokens(n: number): string {
@@ -34,6 +44,26 @@ const fadeUp = {
 };
 
 export function HomeTab({ voiceState, settings, memory, onNavigate }: HomeTabProps) {
+  const [greet, setGreet] = useState(false);
+  const [capIdx, setCapIdx] = useState(0);
+
+  // Fires the pet's cursor-proximity wave exactly once on arrival by
+  // reusing its existing edge-triggered isCursorNear logic — no new
+  // prop needed on KlipPet, and it still respects its own cooldown.
+  useEffect(() => {
+    const t = setTimeout(() => setGreet(true), 350);
+    const off = setTimeout(() => setGreet(false), 900);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(off);
+    };
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => setCapIdx((i) => (i + 1) % CAPABILITIES.length), 3200);
+    return () => clearInterval(interval);
+  }, []);
+
   const { apiKeyStatus, mindProvider, ttsProvider, transcriptionProvider } = settings;
   const sttProvider = transcriptionProvider === 'sarvam' ? 'sarvam' : 'groq';
   const localConn = (settings.localConnections ?? []).find((c) => c.enabled);
@@ -88,9 +118,22 @@ export function HomeTab({ voiceState, settings, memory, onNavigate }: HomeTabPro
 
       <motion.div className="home-hero" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}>
         <div className="home-pet">
-          <KlipPet mood={petMood} size={96} />
+          <KlipPet mood={petMood} size={118} isCursorNear={greet} />
         </div>
         <div className="home-wave-wrap">
+          <div className="home-cap">
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={capIdx}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+              >
+                {CAPABILITIES[capIdx]}
+              </motion.span>
+            </AnimatePresence>
+          </div>
           <Waveform state={ready ? voiceState : 'idle'} bars={23} height={72} />
           {ready ? (
             <div className="home-ptt">

@@ -5,6 +5,7 @@ import type {
   VoiceState,
   Walkthrough,
 } from '../../shared/types';
+import { renderInlineMarkdown } from '../utils/inline-markdown';
 
 interface Turn {
   id: string;
@@ -198,7 +199,7 @@ export function StreamApp() {
                 KLIP
               </div>
               <div className="stream-ai">
-                {t.ai}
+                {renderInlineMarkdown(t.ai)}
                 {t.streaming && <span className="stream-caret" />}
               </div>
             </div>

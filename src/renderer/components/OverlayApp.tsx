@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { VoiceState, WalkthroughStep, TypeRequest, DisplayInfo, ActiveSpecialist } from '../../shared/types';
+import type { VoiceState, WalkthroughStep, TypeRequest, DocumentCreated, DisplayInfo, ActiveSpecialist } from '../../shared/types';
 import { Waveform } from './Waveform';
 import { KlipPet, type PetMood } from './KlipPet';
 import { AdaptiveCursor } from './AdaptiveCursor';
@@ -72,6 +72,8 @@ export function OverlayApp() {
   const [activeSpecialist, setActiveSpecialist] = useState<ActiveSpecialist>(null);
   const [typeToast, setTypeToast] = useState<TypeRequest | null>(null);
   const typeToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [docToast, setDocToast] = useState<DocumentCreated | null>(null);
+  const docToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // A brief happy/concerned reaction overrides the base voice-state mood
   // right when a turn lands — the pet blinks success or flinches error,
   // then settles back into whatever voiceState says next.
@@ -367,6 +369,14 @@ export function OverlayApp() {
           typeToastTimerRef.current = null;
         }, 5000);
       }),
+      window.klip.onDocumentCreated((doc) => {
+        if (docToastTimerRef.current) clearTimeout(docToastTimerRef.current);
+        setDocToast(doc);
+        docToastTimerRef.current = setTimeout(() => {
+          setDocToast(null);
+          docToastTimerRef.current = null;
+        }, 5000);
+      }),
       window.klip.onAiResponseComplete(() => triggerReaction('success')),
       window.klip.onAiError(() => triggerReaction('error')),
       window.klip.onWalkthroughStep((i) => {
@@ -395,6 +405,7 @@ export function OverlayApp() {
       unsubs.forEach((u) => u());
       if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
       if (typeToastTimerRef.current) clearTimeout(typeToastTimerRef.current);
+      if (docToastTimerRef.current) clearTimeout(docToastTimerRef.current);
       if (returnAnimRef.current) cancelAnimationFrame(returnAnimRef.current);
       if (reactionTimerRef.current) clearTimeout(reactionTimerRef.current);
     };
@@ -514,7 +525,7 @@ export function OverlayApp() {
               className={`specialist-chip ${isDesktopSpecialist ? 'desktop' : 'conversation'}`}
               style={{ left: companionPos.x + 44, top: companionPos.y - 6 }}
             >
-              {isDesktopSpecialist ? '🖥 desktop' : '💬 conversation'}
+              {isDesktopSpecialist ? 'desktop' : 'conversation'}
             </div>
           )}
 
@@ -562,6 +573,20 @@ export function OverlayApp() {
                 )}
               </div>
               <div className="type-toast-preview">&ldquo;{typeToast.preview}&rdquo;</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {docToast && isCursorOnThisDisplay && (
+        <div className="type-toast doc-toast" role="status">
+          <div className="type-toast-row">
+            <span className="type-toast-icon" aria-hidden>
+              {docToast.kind === 'excel' ? '▤' : '▥'}
+            </span>
+            <div className="type-toast-text">
+              <div className="type-toast-title">Created &amp; opened</div>
+              <div className="type-toast-preview">{docToast.filename}</div>
             </div>
           </div>
         </div>

@@ -8,8 +8,9 @@ import { ElevenLabsTTS } from './services/elevenlabs-tts';
 import { SarvamTTS } from './services/sarvam-tts';
 import { createTranscriptionProvider, type TranscriptionProvider } from './services/transcription';
 import { captureAllDisplays } from './services/screen-capture';
-import { parseAllPointTags, parseTypeTags, TAG_STRIP_REGEX } from './services/element-detector';
-import { typeText, isAccessibilityGranted, promptAccessibility } from './services/auto-typer';
+import { parseAllPointTags, parseTypeTags, parseDocumentTags, parseScrollTags, TAG_STRIP_REGEX, stripMarkdownEmphasis } from './services/element-detector';
+import { typeText, clickAt, scroll, isAccessibilityGranted, promptAccessibility } from './services/auto-typer';
+import { createExcel, createPdf, revealDocument } from './services/document-generator';
 import { ContextManager } from './services/context-manager';
 import { classifyIntent } from './services/intent-router';
 import * as settingsStore from './services/settings-store';
@@ -31,6 +32,7 @@ import type {
   Walkthrough,
   PttMode,
   TypeRequest,
+  DocumentCreated,
   ScreenCapture,
   ApiKeyName,
   ReasoningDepth,
@@ -61,6 +63,8 @@ export interface CompanionCallbacks {
   /** Active step index (0-based) inside the current walkthrough, or null when idle. */
   onWalkthroughStep: (index: number | null) => void;
   onTypeFulfilled: (request: TypeRequest) => void;
+  /** A real .xlsx/.pdf file was written to disk from an [EXCEL:...]/[PDF:...] tag. */
+  onDocumentCreated: (doc: DocumentCreated) => void;
   onSettingsChanged: (settings: KlipSettings) => void;
   onMemoryStatsChanged: (stats: MemoryStats) => void;
   onChatEntryAdded: (entry: ChatEntry) => void;
@@ -272,6 +276,14 @@ export class CompanionManager {
     this.emitSettings();
   }
 
+  setAutoClickEnabled(enabled: boolean): void {
+    settingsStore.set('autoClickEnabled', enabled);
+    if (enabled && !isAccessibilityGranted()) {
+      promptAccessibility();
+    }
+    this.emitSettings();
+  }
+
   setLaunchAtLogin(enabled: boolean): void {
     settingsStore.set('launchAtLogin', enabled);
     try {
@@ -368,6 +380,21 @@ export class CompanionManager {
 
   private hasActiveTtsKey(settings: StoredSettings): boolean {
     return keyStore.getKeyStatus()[settings.ttsProvider];
+  }
+
+  private ttsProviderLabel(settings: StoredSettings): string {
+    return settings.ttsProvider === 'sarvam' ? 'Sarvam' : 'ElevenLabs';
+  }
+
+  /** "Speak replies" is on but there's no key for the selected TTS provider — this used
+   *  to fail silently (console.error only), so replies never played with no explanation. */
+  private describeMissingTtsKey(settings: StoredSettings): string {
+    return `speak replies is on, but there's no ${this.ttsProviderLabel(settings)} api key set — add one in Voice settings to hear klip talk.`;
+  }
+
+  private describeTtsFailure(settings: StoredSettings, err: unknown): string {
+    const detail = err instanceof Error ? err.message : String(err);
+    return `klip couldn't speak that reply (${this.ttsProviderLabel(settings)}) — ${detail}`;
   }
 
   async playVoicePreview(voiceId: string): Promise<void> {
@@ -545,8 +572,12 @@ export class CompanionManager {
    *
    * Per-step dwell scales with caption length so longer instructions
    * stay on screen long enough to read; floor of 2.6s, ceiling of 5.5s.
+   *
+   * A step with `click: true` also performs a real OS click the instant
+   * its dwell begins — exactly when the pet visually arrives at that
+   * spot, so the click is always telegraphed on screen before it lands.
    */
-  private startWalkthrough(walkthrough: Walkthrough, isCurrent: () => boolean): void {
+  private startWalkthrough(walkthrough: Walkthrough, isCurrent: () => boolean, autoClickEnabled: boolean): void {
     this.clearWalkthroughTimers();
     this.callbacks.onWalkthrough(walkthrough);
 
@@ -559,6 +590,11 @@ export class CompanionManager {
       const t = setTimeout(() => {
         if (!isCurrent()) return;
         this.callbacks.onWalkthroughStep(i);
+        if (step.click && autoClickEnabled) {
+          void clickAt(step.x, step.y).then((ok) => {
+            if (!ok) console.warn('[Klip] click requested but auto-click unavailable (permission or native module missing)');
+          });
+        }
       }, start);
       this.walkthroughTimers.push(t);
       cursor += dwellFor(step.label);
@@ -669,13 +705,18 @@ export class CompanionManager {
         : "i can't see your screen right now — screen capture failed.";
       this.callbacks.onAiResponseChunk(msg);
       this.callbacks.onAiResponseComplete(msg);
-      if (settings.speakReplies && this.hasActiveTtsKey(settings)) {
-        this.setVoiceState('responding');
-        try {
-          const { buffer, mimeType } = await this.synthesizeReply(msg, settings);
-          this.callbacks.onPlayAudio(buffer, mimeType);
-        } catch (err) {
-          console.error('TTS error on screen-capture failure path:', err);
+      if (settings.speakReplies) {
+        if (this.hasActiveTtsKey(settings)) {
+          this.setVoiceState('responding');
+          try {
+            const { buffer, mimeType } = await this.synthesizeReply(msg, settings);
+            this.callbacks.onPlayAudio(buffer, mimeType);
+          } catch (err) {
+            console.error('TTS error on screen-capture failure path:', err);
+            this.callbacks.onError(this.describeTtsFailure(settings, err));
+          }
+        } else {
+          this.callbacks.onError(this.describeMissingTtsKey(settings));
         }
       }
       this.setVoiceState('idle');
@@ -731,14 +772,37 @@ export class CompanionManager {
         if (walkthrough) {
           console.log(
             `[Klip] Walkthrough: ${walkthrough.steps.length} step(s) →`,
-            walkthrough.steps.map((s) => `${s.step}/${s.total} "${s.label}"`).join(', '),
+            walkthrough.steps.map((s) => `${s.step}/${s.total}${s.click ? ' [click]' : ''} "${s.label}"`).join(', '),
           );
-          this.startWalkthrough(walkthrough, isCurrent);
+          this.startWalkthrough(walkthrough, isCurrent, settings.autoClickEnabled);
           analytics.trackElementPointed(
             walkthrough.steps.length > 1
               ? `${walkthrough.steps[0].label} (+${walkthrough.steps.length - 1} more)`
               : walkthrough.steps[0].label,
           );
+          // Klip asked to click something but the user hasn't opted in —
+          // say so once instead of silently only pointing, so "nothing
+          // happened" has a visible reason (same principle as the TTS
+          // fix above).
+          if (!settings.autoClickEnabled && walkthrough.steps.some((s) => s.click)) {
+            this.callbacks.onError(
+              "klip wanted to click something, but auto-click is off — turn it on in General to let it actually click.",
+            );
+          }
+        }
+
+        // [SCROLL:...] tags — executed immediately at wherever the OS
+        // cursor currently is (typically right where a preceding click
+        // just landed it). Same opt-in gate as clicking.
+        const scrollRequests = parseScrollTags(fullText);
+        if (scrollRequests.length > 0 && !settings.autoClickEnabled) {
+          this.callbacks.onError(
+            "klip wanted to scroll, but auto-click is off — turn it on in General to let it control the mouse.",
+          );
+        } else {
+          for (const req of scrollRequests) {
+            void scroll(req.direction, req.amount);
+          }
         }
 
         // [TYPE:...] tags. If the user has opted into auto-typing AND
@@ -763,17 +827,45 @@ export class CompanionManager {
           this.callbacks.onTypeFulfilled({ text, preview, autoTyped });
         }
 
-        if (settings.speakReplies && this.hasActiveTtsKey(settings)) {
+        // [EXCEL:...] / [PDF:...] tags — the model asked for a real file.
+        // Written to disk immediately and opened with the OS default
+        // app so the user sees the finished document without hunting
+        // for it.
+        const documentRequests = parseDocumentTags(fullText);
+        for (const req of documentRequests) {
           try {
-            const { buffer, mimeType } = await this.synthesizeReply(cleanText, settings);
-            // User may have started a new turn while TTS was synthesizing;
-            // don't play an answer they no longer want to hear.
-            if (!isCurrent()) return;
-            this.setVoiceState('responding');
-            this.callbacks.onPlayAudio(buffer, mimeType);
+            const doc = req.kind === 'excel'
+              ? await createExcel(req.filename, req.body)
+              : await createPdf(req.filename, req.body);
+            console.log(`[Klip] Created ${req.kind} → ${doc.path}`);
+            this.callbacks.onDocumentCreated({ kind: req.kind, filename: doc.filename, path: doc.path });
+            void revealDocument(doc.path);
           } catch (err) {
-            console.error('TTS error:', err);
-            analytics.trackTtsError(String(err));
+            console.error(`[Klip] Failed to create ${req.kind}:`, err);
+            if (isCurrent()) {
+              this.callbacks.onError(
+                `couldn't create that ${req.kind === 'excel' ? 'spreadsheet' : 'pdf'} — ${err instanceof Error ? err.message : String(err)}`,
+              );
+            }
+          }
+        }
+
+        if (settings.speakReplies) {
+          if (this.hasActiveTtsKey(settings)) {
+            try {
+              const { buffer, mimeType } = await this.synthesizeReply(stripMarkdownEmphasis(cleanText), settings);
+              // User may have started a new turn while TTS was synthesizing;
+              // don't play an answer they no longer want to hear.
+              if (!isCurrent()) return;
+              this.setVoiceState('responding');
+              this.callbacks.onPlayAudio(buffer, mimeType);
+            } catch (err) {
+              console.error('TTS error:', err);
+              analytics.trackTtsError(String(err));
+              if (isCurrent()) this.callbacks.onError(this.describeTtsFailure(settings, err));
+            }
+          } else {
+            this.callbacks.onError(this.describeMissingTtsKey(settings));
           }
         }
 

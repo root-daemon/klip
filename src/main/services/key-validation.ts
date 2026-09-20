@@ -67,8 +67,8 @@ const PROBES: Record<ApiKeyName, (key: string) => Probe> = {
     body: JSON.stringify({
       text: 'hi',
       target_language_code: 'en-IN',
-      speaker: 'anushka',
-      model: 'bulbul:v2',
+      speaker: 'shubh',
+      model: 'bulbul:v3',
     }),
   }),
   groq: (key) => ({

@@ -27,12 +27,12 @@ const ROWS: Row[] = [
   {
     kind: 'accessibility',
     label: 'Accessibility',
-    reason: 'so KLIP can type into the focused field for you',
+    reason: 'so KLIP can type or click for you',
     platforms: ['darwin'],
-    // Only nag the user about this one when they've actually turned
-    // on auto-typing. Keeps the banner quiet for users who never
-    // care about that feature.
-    visibleWhen: (s) => !!s?.autoTypeEnabled,
+    // Only nag the user about this one when they've actually turned on
+    // auto-type or auto-click. Keeps the banner quiet for users who
+    // never care about either feature.
+    visibleWhen: (s) => !!s?.autoTypeEnabled || !!s?.autoClickEnabled,
   },
 ];
 

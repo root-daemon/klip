@@ -9,7 +9,7 @@ export interface SarvamTtsOptions {
 }
 
 /**
- * Sarvam AI (Bulbul v2) text-to-speech. Returns base64 WAV audio per
+ * Sarvam AI (Bulbul v3) text-to-speech. Returns base64 WAV audio per
  * their response contract; decoded to a Buffer here so the caller can
  * treat it identically to the ElevenLabs MP3 buffer.
  */
@@ -30,7 +30,7 @@ export class SarvamTTS {
         text,
         target_language_code: options.languageCode ?? 'en-IN',
         speaker: options.speaker,
-        model: 'bulbul:v2',
+        model: 'bulbul:v3',
         enable_preprocessing: true,
       }),
     });

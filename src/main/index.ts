@@ -261,6 +261,11 @@ app.whenReady().then(() => {
       sendToOneOverlay(IPC.TYPE_FULFILLED, req);
       sendToStream(IPC.TYPE_FULFILLED, req);
     },
+    onDocumentCreated: (doc) => {
+      sendToOneOverlay(IPC.DOCUMENT_CREATED, doc);
+      sendToPanel(IPC.DOCUMENT_CREATED, doc);
+      sendToStream(IPC.DOCUMENT_CREATED, doc);
+    },
     onSettingsChanged: (s) => sendToPanel(IPC.SETTINGS_CHANGED, s),
     onMemoryStatsChanged: (stats) => sendToPanel(IPC.MEMORY_STATS, stats),
     onChatEntryAdded: (entry) => sendToPanel(IPC.CHAT_ENTRY_ADDED, entry),
@@ -490,6 +495,7 @@ app.whenReady().then(() => {
   ipcMain.on(IPC.SET_PUSH_TO_TALK_SHORTCUT, (_e, accel: string) => companion.setPushToTalkShortcut(accel));
   ipcMain.on(IPC.SET_PTT_MODE, (_e, mode) => companion.setPttMode(mode));
   ipcMain.on(IPC.SET_AUTO_TYPE_ENABLED, (_e, enabled: boolean) => companion.setAutoTypeEnabled(enabled));
+  ipcMain.on(IPC.SET_AUTO_CLICK_ENABLED, (_e, enabled: boolean) => companion.setAutoClickEnabled(enabled));
   ipcMain.on(IPC.SET_STREAM_VISIBILITY, (_e, v: StreamVisibility) => companion.setStreamVisibility(v));
   ipcMain.on(IPC.SET_STREAM_WINDOW_BOUNDS, (_e, b: StreamWindowBounds) => companion.setStreamWindowBounds(b));
   // (clearStream used to be a needless renderer→main→same-renderer

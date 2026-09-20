@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChatEntry } from '../../../shared/types';
+import { KlipPet } from '../KlipPet';
+import { renderInlineMarkdown } from '../../utils/inline-markdown';
 
 function formatTime(ts: number): string {
   const d = new Date(ts);
@@ -74,6 +76,7 @@ export function ChatsTab() {
   };
 
   const hasAny = entries.length > 0 || streamingUser || streamingAssistant;
+  const isThinking = streamingUser !== null && streamingAssistant === '';
 
   return (
     <>
@@ -83,7 +86,7 @@ export function ChatsTab() {
             Chats<em>.</em>
           </h1>
           <p className="main-lead" style={{ marginBottom: 0 }}>
-            Everything you and KLIP have said. All stored locally on your machine.
+            Everything you and klip have said. All stored locally on your machine.
           </p>
         </div>
         <button className="btn xs" onClick={clearAll} disabled={!entries.length}>
@@ -94,7 +97,7 @@ export function ChatsTab() {
       <div className="chat-log" ref={scrollRef}>
         {!hasAny && (
           <div className="chat-empty">
-            <div className="chat-empty-icon">F</div>
+            <KlipPet mood="idle" size={56} />
             <div className="chat-empty-t">No chats yet</div>
             <div className="chat-empty-s">
               Hold the push-to-talk shortcut from anywhere on your machine to start a conversation.
@@ -112,6 +115,7 @@ export function ChatsTab() {
             assistant={streamingAssistant}
             ts={Date.now()}
             live
+            thinking={isThinking}
           />
         )}
       </div>
@@ -124,27 +128,42 @@ function ChatPair({
   assistant,
   ts,
   live,
+  thinking,
 }: {
   user: string;
   assistant: string;
   ts: number;
   live?: boolean;
+  thinking?: boolean;
 }) {
   return (
     <div className={`chat-pair ${live ? 'live' : ''}`}>
-      <div className="chat-time">{formatTime(ts)}{live ? ' · live' : ''}</div>
+      <div className="chat-time">
+        {live && <span className="chat-time-dot" />}
+        {formatTime(ts)}
+        {live ? ' · live' : ''}
+      </div>
       {user && (
         <div className="chat-turn user">
-          <div className="chat-avatar user">You</div>
-          <div className="chat-text">{user}</div>
+          <div className="chat-bubble user">{user}</div>
         </div>
       )}
-      {assistant && (
+      {(assistant || thinking) && (
         <div className="chat-turn assistant">
-          <div className="chat-avatar assistant">F</div>
+          <div className="chat-avatar-wrap">
+            <KlipPet mood={thinking ? 'processing' : live ? 'responding' : 'idle'} size={28} />
+          </div>
           <div className="chat-text">
-            {assistant}
-            {live && <span className="caret" />}
+            {thinking ? (
+              <span className="chat-thinking">
+                <span /><span /><span />
+              </span>
+            ) : (
+              <>
+                {renderInlineMarkdown(assistant)}
+                {live && <span className="caret" />}
+              </>
+            )}
           </div>
         </div>
       )}

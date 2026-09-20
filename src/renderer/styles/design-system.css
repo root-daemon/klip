@@ -1,32 +1,36 @@
 /* ── KLIP Design System ───────────────────────────────────────────────
- * Near-black surfaces, warm amber/orange accent pair, large soft radii.
+ * Rig.ai-inspired: near-black grained surfaces, one saturated red-orange
+ * accent, bold geometric display type, monospace uppercase labels.
  * ──────────────────────────────────────────────────────────────────── */
 
 :root {
   /* ── Background layers (darkest → lightest) ─────────────────────── */
-  --bg-deepest:  #08090a;
-  --bg-base:     #0f1011;
-  --bg-raised:   #17181b;
-  --bg-elevated: #1e2023;
-  --bg-surface:  #26282c;
+  --bg-deepest:  #060606;
+  --bg-base:     #0a0a0a;
+  --bg-raised:   #111112;
+  --bg-elevated: #17171a;
+  --bg-surface:  #1e1e22;
 
   /* ── Borders ────────────────────────────────────────────────────── */
-  --border-subtle: #2a2c30;
-  --border-strong: #3c3f45;
+  --border-subtle: #26262a;
+  --border-strong: #38383e;
 
   /* ── Text ───────────────────────────────────────────────────────── */
-  --text-primary:   #f6f6f4;
-  --text-secondary: #a8acb3;
-  --text-tertiary:  #6c7078;
+  --text-primary:   #f0ede6;
+  --text-secondary: #a5a29c;
+  --text-tertiary:  #6a6862;
 
-  /* ── Accent (warm amber) ───────────────────────────────────────── */
-  --accent:       #ffb020;
-  --accent-hover: #ffc14d;
-  --accent-muted: rgba(255, 176, 32, 0.16);
+  /* ── Accent — a single saturated red-orange, used everywhere instead
+     of a competing brand pair ───────────────────────────────────── */
+  --accent:       #ed462d;
+  --accent-hover: #ff5c3d;
+  --accent-muted: rgba(237, 70, 45, 0.16);
 
-  /* ── Brand pair — pulled from the KLIP visual identity ──────────── */
-  --accent-yellow: #f4e409;
-  --accent-orange: #ff7a33;
+  /* ── Kept as compatibility aliases for older references — both now
+     resolve to the single accent family (a lighter tint for the
+     second one) rather than a separate hue. ───────────────────────── */
+  --accent-yellow: var(--accent-hover);
+  --accent-orange: var(--accent);
 
   /* ── Blue scale (kept as a neutral "info" scale, independent of brand accent) ── */
   --blue-50:  #eff6ff;
@@ -49,17 +53,17 @@
   /* ── Pet (overlay companion) ──────────────────────────────────────
    * --cursor-blue is kept as a compatibility alias — some older styles
    * may still reference it. New styles should use --pet-glow directly. */
-  --pet-body:      #1a1b1e;
-  --pet-body-hi:   #313339;
-  --pet-glow:      #ffc75f;
-  --pet-glow-soft: rgba(255, 199, 95, 0.35);
+  --pet-body:      #141415;
+  --pet-body-hi:   #2c2c30;
+  --pet-glow:      #ed462d;
+  --pet-glow-soft: rgba(237, 70, 45, 0.35);
   --cursor-blue:   var(--pet-glow);
   /* The "desktop" specialist's identity (see intent-router.ts) — a
-     turn resolving/pointing at something on screen gets this instead
-     of the default amber, so the two specialists read as visually
-     distinct while a turn is in flight. */
-  --pet-glow-desktop:      #ff8a42;
-  --pet-glow-desktop-soft: rgba(255, 138, 66, 0.38);
+     turn resolving/pointing at something on screen gets a lighter tint
+     of the same accent family instead of a different hue, so the two
+     specialists still read as one coherent single-accent system. */
+  --pet-glow-desktop:      #ff7a4d;
+  --pet-glow-desktop-soft: rgba(255, 122, 77, 0.38);
 
   /* ── Radius ─────────────────────────────────────────────────────── */
   --radius-sm:  8px;
@@ -79,6 +83,13 @@
   /* ── Typography ─────────────────────────────────────────────────── */
   --font-sans: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   --font-mono: 'Cascadia Code', 'SF Mono', 'Fira Code', monospace;
+  /* Bold geometric display face for hero headlines — the free stand-in
+     for the kind of heavy, wide grotesk this visual language calls for. */
+  --font-display: 'Unbounded', 'Geist', var(--font-sans);
+  /* Uppercase tracked overline labels, badges, and nav — a squared-off
+     monospace instead of the body sans, for that instrumentation-panel
+     read. */
+  --font-label: 'Chivo Mono', 'Geist Mono', var(--font-mono);
 }
 
 /* ── Reset ──────────────────────────────────────────────────────────── */

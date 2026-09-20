@@ -1,12 +1,14 @@
 import { systemPreferences } from 'electron';
 
 /**
- * Native auto-typer wrapper. The underlying module (`@nut-tree-fork/nut-js`)
- * ships native bindings for libnut and emits global keyboard events through
- * the OS. We load it lazily so a failed install doesn't crash the main
- * process — every consumer goes through `typeText`, which returns `false`
- * if the module or the required permission is unavailable, and the caller
- * falls back to clipboard handoff.
+ * Native desktop-control wrapper (keyboard + mouse). The underlying
+ * module (`@nut-tree-fork/nut-js`) ships native bindings for libnut and
+ * emits global keyboard/mouse events through the OS. We load it lazily
+ * so a failed install doesn't crash the main process — every consumer
+ * goes through one of the exported functions below, each of which
+ * returns `false` if the module or the required permission is
+ * unavailable, and the caller falls back to a safer degraded behavior
+ * (clipboard handoff for typing, point-only for clicking).
  */
 
 type NutJs = typeof import('@nut-tree-fork/nut-js');
@@ -68,6 +70,43 @@ export async function typeText(text: string): Promise<boolean> {
     return true;
   } catch (err) {
     console.error('[Klip] auto-type failed:', err);
+    return false;
+  }
+}
+
+/**
+ * Move the real OS cursor to (x, y) — real screen coordinates, already
+ * mapped from screenshot-pixel space by the caller — and perform a left
+ * click. Returns false (same contract as typeText) when the native
+ * module or Accessibility permission is unavailable; the caller treats
+ * that as "pointing only, nothing was actually clicked".
+ */
+export async function clickAt(x: number, y: number): Promise<boolean> {
+  const lib = await load();
+  if (!lib) return false;
+  if (!isAccessibilityGranted()) return false;
+  try {
+    await lib.mouse.setPosition(new lib.Point(Math.round(x), Math.round(y)));
+    await lib.mouse.leftClick();
+    return true;
+  } catch (err) {
+    console.error('[Klip] auto-click failed:', err);
+    return false;
+  }
+}
+
+/** Scroll at the current OS cursor position — the same "steps" unit nut-js
+ *  uses; the actual pixel distance per step is OS-dependent. */
+export async function scroll(direction: 'up' | 'down', amount: number): Promise<boolean> {
+  const lib = await load();
+  if (!lib) return false;
+  if (!isAccessibilityGranted()) return false;
+  try {
+    if (direction === 'up') await lib.mouse.scrollUp(amount);
+    else await lib.mouse.scrollDown(amount);
+    return true;
+  } catch (err) {
+    console.error('[Klip] auto-scroll failed:', err);
     return false;
   }
 }

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Display, screen } from 'electron';
+import { app, BrowserWindow, Display, screen, nativeImage } from 'electron';
 import path from 'path';
 import { DISPLAY_INFO_ARG_PREFIX, type DisplayInfo, type StreamWindowBounds } from '../shared/types';
 
@@ -6,6 +6,20 @@ const isDev = !app.isPackaged && process.env.VITE_DEV_SERVER === '1';
 
 function getPreloadPath(): string {
   return path.join(__dirname, '../preload/index.js');
+}
+
+/**
+ * Window icon (title bar, taskbar, Alt-tab thumbnail). Without this,
+ * an unpackaged dev build falls back to whatever icon is baked into
+ * electron.exe itself rather than KLIP's — set explicitly so dev and
+ * packaged builds always match. Same asset resolution as the tray icon
+ * in main/index.ts.
+ */
+function getWindowIcon(): Electron.NativeImage | undefined {
+  const assetRoot = path.join(__dirname, '../../../assets');
+  const file = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+  const img = nativeImage.createFromPath(path.join(assetRoot, file));
+  return img.isEmpty() ? undefined : img;
 }
 
 function loadPage(win: BrowserWindow, page: string): void {
@@ -39,6 +53,7 @@ export function createPanelWindow(): BrowserWindow {
     transparent: false,
     backgroundColor: '#0f0f11',
     title: 'KLIP',
+    icon: getWindowIcon(),
     // Windows/Linux otherwise show Electron's stock "File Edit View
     // Window Help" bar above the panel. Alt still reveals it.
     autoHideMenuBar: true,
@@ -52,6 +67,26 @@ export function createPanelWindow(): BrowserWindow {
       // self-contained file (esbuild) before flipping this on safely.
       sandbox: false,
     },
+  });
+
+  // Electron's implicit default menu (no Menu.setApplicationMenu call is
+  // made — autoHideMenuBar only hides the bar, not the menu itself) gives
+  // Ctrl/Cmd+- a working "Zoom Out" accelerator, but Ctrl/Cmd+Plus is a
+  // long-standing Electron/Chromium quirk: the accelerator string "Plus"
+  // doesn't reliably match the key event most keyboard layouts actually
+  // send for that combo. Handle zoom-in (and reset) explicitly instead of
+  // fighting the default menu's accelerator matching; zoom-out is left
+  // alone since it already works.
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || !(input.control || input.meta)) return;
+    if (input.key === '=' || input.key === '+') {
+      event.preventDefault();
+      const z = win.webContents.getZoomLevel();
+      win.webContents.setZoomLevel(Math.min(5, z + 0.5));
+    } else if (input.key === '0') {
+      event.preventDefault();
+      win.webContents.setZoomLevel(0);
+    }
   });
 
   loadPage(win, 'panel');

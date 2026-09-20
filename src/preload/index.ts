@@ -16,6 +16,7 @@ import type {
   TranscriptionResult,
   Walkthrough,
   TypeRequest,
+  DocumentCreated,
   ReasoningDepth,
   ReplyTone,
   PttMode,
@@ -88,6 +89,7 @@ const api = {
   setPushToTalkShortcut: (accel: string): void => ipcRenderer.send(IPC.SET_PUSH_TO_TALK_SHORTCUT, accel),
   setPttMode: (mode: PttMode): void => ipcRenderer.send(IPC.SET_PTT_MODE, mode),
   setAutoTypeEnabled: (enabled: boolean): void => ipcRenderer.send(IPC.SET_AUTO_TYPE_ENABLED, enabled),
+  setAutoClickEnabled: (enabled: boolean): void => ipcRenderer.send(IPC.SET_AUTO_CLICK_ENABLED, enabled),
   suspendPushToTalkShortcut: (): void => ipcRenderer.send(IPC.SUSPEND_PUSH_TO_TALK_SHORTCUT),
   resumePushToTalkShortcut: (): void => ipcRenderer.send(IPC.RESUME_PUSH_TO_TALK_SHORTCUT),
 
@@ -245,6 +247,12 @@ const api = {
     const handler = (_e: Electron.IpcRendererEvent, req: TypeRequest) => cb(req);
     ipcRenderer.on(IPC.TYPE_FULFILLED, handler);
     return () => ipcRenderer.removeListener(IPC.TYPE_FULFILLED, handler);
+  },
+
+  onDocumentCreated: (cb: (doc: DocumentCreated) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, doc: DocumentCreated) => cb(doc);
+    ipcRenderer.on(IPC.DOCUMENT_CREATED, handler);
+    return () => ipcRenderer.removeListener(IPC.DOCUMENT_CREATED, handler);
   },
 
   onCursorPosition: (cb: (pos: { x: number; y: number }) => void) => {

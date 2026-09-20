@@ -3,6 +3,7 @@ import * as path from 'path';
 import { app } from 'electron';
 import { writeFileAtomic } from './fs-util';
 import { parsePreferences, type CloudPreferences } from '../../shared/cloud';
+import { SARVAM_VOICE_PRESETS } from '../../shared/types';
 import type {
   ClaudeModel,
   OpenAIModel,
@@ -47,6 +48,7 @@ export interface StoredSettings {
   pushToTalkShortcut: string;
   pttMode: PttMode;
   autoTypeEnabled: boolean;
+  autoClickEnabled: boolean;
   streamVisibility: StreamVisibility;
   streamWindowBounds: StreamWindowBounds | null;
 
@@ -67,7 +69,7 @@ const DEFAULTS: StoredSettings = {
   voiceId: 'pMsXgVXv3BLzUgSXRplE',
   voiceSpeed: 1.0,
   voiceStability: 0.5,
-  sarvamSpeaker: 'anushka',
+  sarvamSpeaker: 'shubh',
   speakReplies: true,
 
   groqTranscriptionModel: 'whisper-large-v3-turbo',
@@ -75,11 +77,12 @@ const DEFAULTS: StoredSettings = {
 
   isClickyCursorEnabled: true,
   launchAtLogin: false,
-  pushToTalkShortcut: 'Ctrl+Alt+X',
+  pushToTalkShortcut: process.platform === 'darwin' ? 'Cmd+K' : 'Ctrl+K',
   // Default to 'toggle' on macOS because Electron's globalShortcut on
   // darwin can't detect key-up; 'hold' would record forever there.
   pttMode: process.platform === 'darwin' ? 'toggle' : 'hold',
   autoTypeEnabled: false,
+  autoClickEnabled: false,
   streamVisibility: 'off',
   streamWindowBounds: null,
 
@@ -106,6 +109,12 @@ let cache: StoredSettings | null = null;
  *  to reopen that picker — silently fall back to the current default
  *  instead. */
 const VALID_GEMINI_MODELS: GeminiModel[] = ['gemini-3.6-flash', 'gemini-3.1-pro-preview'];
+/** Same problem as Gemini above, for Sarvam: bulbul:v2's speaker roster
+ *  (anushka, meera, ...) was retired when v3 shipped, and speaker ids
+ *  aren't interchangeable across model versions. A stale v2 speaker on
+ *  disk would otherwise 400 on every TTS call until the user happens to
+ *  reopen the voice picker and pick a new one. */
+const VALID_SARVAM_SPEAKERS = SARVAM_VOICE_PRESETS.map((v) => v.id);
 
 function readDisk(): StoredSettings {
   try {
@@ -113,6 +122,9 @@ function readDisk(): StoredSettings {
     const merged: StoredSettings = { ...DEFAULTS, ...JSON.parse(raw) };
     if (!VALID_GEMINI_MODELS.includes(merged.selectedGeminiModel)) {
       merged.selectedGeminiModel = DEFAULTS.selectedGeminiModel;
+    }
+    if (!VALID_SARVAM_SPEAKERS.includes(merged.sarvamSpeaker)) {
+      merged.sarvamSpeaker = DEFAULTS.sarvamSpeaker;
     }
     return merged;
   } catch {

@@ -94,6 +94,9 @@ export interface DetectedElement {
   y: number;
   label: string;
   screenIndex: number;
+  /** True for a [CLICK:...] tag — the pet also performs a real OS
+   *  click here (if autoClickEnabled) instead of only pointing. */
+  click?: boolean;
 }
 
 export interface WalkthroughStep extends DetectedElement {
@@ -119,6 +122,18 @@ export interface TypeRequest {
   preview: string;
   /** True when the text was actually auto-typed; false when copied. */
   autoTyped: boolean;
+}
+
+/**
+ * A real file the agent produced on disk from a [EXCEL:...] / [PDF:...]
+ * tag (see element-detector.ts + document-generator.ts) — written to
+ * ~/Documents/KLIP and opened with the OS default app so the user sees
+ * the finished result immediately.
+ */
+export interface DocumentCreated {
+  kind: 'excel' | 'pdf';
+  filename: string;
+  path: string;
 }
 
 // ── Local Connections (Ollama / OpenAI-compatible local endpoints) ─────
@@ -200,14 +215,16 @@ export const VOICE_PRESETS: VoicePreset[] = [
   { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold', description: 'crisp · narration · en-US' },
 ];
 
-/** Sarvam AI (Bulbul v2) speaker presets — strong Indian-language coverage. */
+/** Sarvam AI (Bulbul v3) speaker presets — strong Indian-language coverage.
+ *  v2's speaker roster (anushka, meera, ...) was retired alongside the
+ *  v2 model; these ids are v3-only and not interchangeable with v2. */
 export const SARVAM_VOICE_PRESETS: VoicePreset[] = [
-  { id: 'anushka', name: 'Anushka', description: 'warm · conversational · multilingual' },
-  { id: 'meera', name: 'Meera', description: 'calm · narrator · multilingual' },
-  { id: 'vidya', name: 'Vidya', description: 'clear · assistant-like · multilingual' },
-  { id: 'arya', name: 'Arya', description: 'bright · energetic · multilingual' },
-  { id: 'abhilash', name: 'Abhilash', description: 'steady · confident · multilingual' },
-  { id: 'karun', name: 'Karun', description: 'deep · narration · multilingual' },
+  { id: 'shubh', name: 'Shubh', description: 'default · multilingual' },
+  { id: 'priya', name: 'Priya', description: 'warm · conversational · multilingual' },
+  { id: 'aditya', name: 'Aditya', description: 'steady · confident · multilingual' },
+  { id: 'kavya', name: 'Kavya', description: 'bright · energetic · multilingual' },
+  { id: 'dev', name: 'Dev', description: 'clear · assistant-like · multilingual' },
+  { id: 'ishita', name: 'Ishita', description: 'calm · narrator · multilingual' },
 ];
 
 // ── Chat History ───────────────────────────────────────────────────────
@@ -289,6 +306,15 @@ export interface KlipSettings {
    */
   autoTypeEnabled: boolean;
   /**
+   * If true, Klip may actually move the OS mouse and click when the
+   * model emits a [CLICK:...] tag. Same permission story as auto-type
+   * (Accessibility on macOS, native module required); when disabled or
+   * unavailable, a [CLICK:...] tag degrades to pointing only — the pet
+   * shows where it would click, but nothing is actually clicked. Off
+   * by default: this is real, unsupervised control of the user's mouse.
+   */
+  autoClickEnabled: boolean;
+  /**
    * Controls the transparent stream window:
    * - 'off'       — never shown
    * - 'responses' — shown only while Klip is actively answering
@@ -320,7 +346,7 @@ export const DEFAULT_SETTINGS: KlipSettings = {
   voiceId: 'pMsXgVXv3BLzUgSXRplE',
   voiceSpeed: 1.0,
   voiceStability: 0.5,
-  sarvamSpeaker: 'anushka',
+  sarvamSpeaker: 'shubh',
   speakReplies: true,
 
   groqTranscriptionModel: 'whisper-large-v3-turbo',
@@ -328,9 +354,10 @@ export const DEFAULT_SETTINGS: KlipSettings = {
 
   isClickyCursorEnabled: true,
   launchAtLogin: false,
-  pushToTalkShortcut: 'Ctrl+Alt+X',
+  pushToTalkShortcut: 'Ctrl+K',
   pttMode: 'hold',
   autoTypeEnabled: false,
+  autoClickEnabled: false,
   streamVisibility: 'off',
   streamWindowBounds: null,
 
@@ -353,6 +380,7 @@ export const IPC = {
   WALKTHROUGH: 'walkthrough',
   WALKTHROUGH_STEP: 'walkthrough-step',
   TYPE_FULFILLED: 'type-fulfilled',
+  DOCUMENT_CREATED: 'document-created',
   CURSOR_POSITION: 'cursor-position',
   SETTINGS_CHANGED: 'settings-changed',
   PERMISSION_STATUS: 'permission-status',
@@ -404,6 +432,7 @@ export const IPC = {
   SET_PUSH_TO_TALK_SHORTCUT: 'set-push-to-talk-shortcut',
   SET_PTT_MODE: 'set-ptt-mode',
   SET_AUTO_TYPE_ENABLED: 'set-auto-type-enabled',
+  SET_AUTO_CLICK_ENABLED: 'set-auto-click-enabled',
   SET_STREAM_VISIBILITY: 'set-stream-visibility',
   SET_STREAM_WINDOW_BOUNDS: 'set-stream-window-bounds',
   CLEAR_STREAM: 'clear-stream',
