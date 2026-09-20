@@ -68,10 +68,12 @@ function randomPhrase(): string {
 }
 
 type CursorMode = 'following' | 'navigating' | 'holding' | 'returning';
+type ComputerActionTarget = { x: number; y: number; label: string };
 
 export function OverlayApp() {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const [currentStep, setCurrentStep] = useState<WalkthroughStep | null>(null);
+  const [computerActionTarget, setComputerActionTarget] = useState<ComputerActionTarget | null>(null);
   const [pointingPhrase, setPointingPhrase] = useState('');
   const [cursorMode, setCursorMode] = useState<CursorMode>('following');
   const [companionPos, setCompanionPos] = useState({ x: 0, y: 0 });
@@ -407,6 +409,33 @@ export function OverlayApp() {
           setTimeout(() => setAgentLog([]), 2500);
         }
       }),
+      window.klip.onComputerUseState((state) => {
+        const proposal = state.proposal;
+        const target = (state.status === 'awaiting-approval' || state.status === 'executing')
+          ? proposal?.target
+          : undefined;
+        if (!target || !proposal) {
+          setComputerActionTarget(null);
+          if (state.status !== 'planning' && state.status !== 'idle') startReturnAnimation();
+          return;
+        }
+        if (returnAnimRef.current) {
+          cancelAnimationFrame(returnAnimRef.current);
+          returnAnimRef.current = null;
+        }
+        if (holdTimerRef.current) clearTimeout(holdTimerRef.current);
+        setComputerActionTarget({ x: target.x, y: target.y, label: proposal.action.description });
+        const bounds = displayRef.current?.bounds;
+        setCompanionPosSync({
+          x: target.x - (bounds?.x ?? 0),
+          y: target.y - (bounds?.y ?? 0),
+        });
+        setCursorModeSync('navigating');
+        holdTimerRef.current = setTimeout(() => {
+          holdTimerRef.current = null;
+          setCursorModeSync('holding');
+        }, 650);
+      }),
       window.klip.onAiResponseComplete(() => triggerReaction('success')),
       window.klip.onAiError(() => triggerReaction('error')),
       window.klip.onWalkthroughStep((i) => {
@@ -446,6 +475,7 @@ export function OverlayApp() {
       // User started a new turn — interrupt anything KLIP was saying.
       stopCurrentTts();
       setCurrentStep(null);
+      setComputerActionTarget(null);
       stepsRef.current = [];
       if (holdTimerRef.current) {
         clearTimeout(holdTimerRef.current);
@@ -466,13 +496,14 @@ export function OverlayApp() {
   // cursor was on when the screenshot was taken). Render the annotated
   // cursor only on that display so users with multiple monitors don't
   // see the pet flying around on a screen the step isn't on.
+  const activeTarget = computerActionTarget ?? currentStep;
   const isStepOnThisDisplay = (() => {
-    if (!currentStep) return false;
+    if (!activeTarget) return false;
     const b = displayRef.current?.bounds;
     if (!b) return false;
     return (
-      currentStep.x >= b.x && currentStep.x < b.x + b.width &&
-      currentStep.y >= b.y && currentStep.y < b.y + b.height
+      activeTarget.x >= b.x && activeTarget.x < b.x + b.width &&
+      activeTarget.y >= b.y && activeTarget.y < b.y + b.height
     );
   })();
 
@@ -489,7 +520,7 @@ export function OverlayApp() {
       : 'none';
 
   const showAnnotation = (isNavigating || isHolding) && isStepOnThisDisplay;
-  const isMultiStep = (currentStep?.total ?? 0) > 1;
+  const isMultiStep = !computerActionTarget && (currentStep?.total ?? 0) > 1;
   // While a real multi-step agent task is running, the step kind tells
   // a richer story than the generic 'processing' voice state does —
   // reading the screen looks different from typing, which looks
@@ -605,7 +636,7 @@ export function OverlayApp() {
                 </span>
               )}
               <span className="bubble-text">
-                {isMultiStep ? currentStep!.label : pointingPhrase}
+                {computerActionTarget?.label ?? (isMultiStep ? currentStep!.label : pointingPhrase)}
               </span>
             </div>
           )}

@@ -3,6 +3,7 @@ import * as path from 'path';
 import { app } from 'electron';
 import { writeFileAtomic } from './fs-util';
 import { parsePreferences, type CloudPreferences } from '../../shared/cloud';
+import { normalizeSarvamSpeaker, SARVAM_DEFAULT_SPEAKER } from '../../shared/sarvam';
 import { SARVAM_VOICE_PRESETS } from '../../shared/types';
 import type {
   ClaudeModel,
@@ -49,6 +50,7 @@ export interface StoredSettings {
   pttMode: PttMode;
   autoTypeEnabled: boolean;
   autoClickEnabled: boolean;
+  computerUseEnabled: boolean;
   streamVisibility: StreamVisibility;
   streamWindowBounds: StreamWindowBounds | null;
 
@@ -69,7 +71,7 @@ const DEFAULTS: StoredSettings = {
   voiceId: 'pMsXgVXv3BLzUgSXRplE',
   voiceSpeed: 1.0,
   voiceStability: 0.5,
-  sarvamSpeaker: 'shubh',
+  sarvamSpeaker: SARVAM_DEFAULT_SPEAKER,
   speakReplies: true,
 
   groqTranscriptionModel: 'whisper-large-v3-turbo',
@@ -83,6 +85,7 @@ const DEFAULTS: StoredSettings = {
   pttMode: process.platform === 'darwin' ? 'toggle' : 'hold',
   autoTypeEnabled: false,
   autoClickEnabled: false,
+  computerUseEnabled: true,
   streamVisibility: 'off',
   streamWindowBounds: null,
 
@@ -126,6 +129,9 @@ function readDisk(): StoredSettings {
     if (!VALID_SARVAM_SPEAKERS.includes(merged.sarvamSpeaker)) {
       merged.sarvamSpeaker = DEFAULTS.sarvamSpeaker;
     }
+    // Bulbul v3 retired the old v2 voice names. Existing installations keep
+    // working without requiring users to find a new speaker themselves.
+    merged.sarvamSpeaker = normalizeSarvamSpeaker(merged.sarvamSpeaker);
     return merged;
   } catch {
     return { ...DEFAULTS };
@@ -147,7 +153,9 @@ export function get<K extends keyof StoredSettings>(key: K): StoredSettings[K] {
 
 export function set<K extends keyof StoredSettings>(key: K, value: StoredSettings[K]): void {
   const data = ensureLoaded();
-  data[key] = value;
+  data[key] = (key === 'sarvamSpeaker'
+    ? normalizeSarvamSpeaker(value as string)
+    : value) as StoredSettings[K];
   // Persist after mutating the cache. If the disk write fails we still
   // have the new value in memory for the rest of the session — the next
   // launch will revert, which matches the previous behavior.

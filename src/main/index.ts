@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, globalShortcut, screen, ipcMain, shell, nativeImage } from 'electron';
+import { app, BrowserWindow, Tray, Menu, globalShortcut, screen, ipcMain, shell, nativeImage, dialog, session } from 'electron';
 import path from 'path';
 import { CompanionManager } from './companion-manager';
 import {
@@ -17,6 +17,7 @@ import { OllamaAPI, DEFAULT_OLLAMA_URL } from './services/ollama-api';
 import { initGpuGuard, confirmGpuHealthy } from './services/gpu-guard';
 import { randomUUID } from 'crypto';
 import { registerCloudAccount } from './services/cloud-account';
+import type { ComputerUseState } from './services/computer-use';
 
 // Prevent multiple instances
 const gotLock = app.requestSingleInstanceLock();
@@ -187,10 +188,49 @@ function sendToAll(channel: string, ...args: unknown[]): void {
   sendToStream(channel, ...args);
 }
 
+async function requestComputerActionApproval(state: ComputerUseState): Promise<void> {
+  const proposal = state.proposal;
+  if (!proposal || !companion) return;
+  const action = proposal.action;
+  const detail = [
+    action.description,
+    action.expected ? `Expected result: ${action.expected}` : '',
+    action.type === 'type' ? `Text to type:\n${action.text}` : '',
+  ].filter(Boolean).join('\n\n');
+  const response = await dialog.showMessageBox({
+    type: 'question',
+    buttons: ['Cancel', 'Approve'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    title: 'Approve KLIP action',
+    message: proposal.approvalMessage,
+    detail,
+  });
+  // Reject/approve by id: a stale native dialog cannot affect a newer run.
+  if (response.response === 1) {
+    await companion.approveComputerAction(proposal.id);
+  } else {
+    companion.rejectComputerAction(proposal.id);
+  }
+}
+
 // ── App Lifecycle ──────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
   confirmGpuHealthy();
+
+  // `desktopCapturer.getSources()` only enumerates screens; it does not
+  // request Screen Recording access on recent macOS releases. Let Apple's
+  // native picker handle a user-initiated getDisplayMedia request instead.
+  // On versions without that picker, the callback rejects and KLIP opens the
+  // Screen Recording settings pane as its fallback.
+  if (process.platform === 'darwin') {
+    session.defaultSession.setDisplayMediaRequestHandler(
+      (_request, callback) => callback({}),
+      { useSystemPicker: true },
+    );
+  }
 
   // Initialize companion manager
   companion = new CompanionManager({
@@ -270,6 +310,12 @@ app.whenReady().then(() => {
       sendToOneOverlay(IPC.AGENT_STEP, step);
       sendToPanel(IPC.AGENT_STEP, step);
     },
+    onComputerUseState: (state) => {
+      // The overlay receives this too so the companion can visibly travel
+      // to an approved pointer target before the native cursor acts.
+      sendToAll(IPC.COMPUTER_USE_STATE, state);
+      if (state.status === 'awaiting-approval') void requestComputerActionApproval(state);
+    },
     onSettingsChanged: (s) => sendToPanel(IPC.SETTINGS_CHANGED, s),
     onMemoryStatsChanged: (stats) => sendToPanel(IPC.MEMORY_STATS, stats),
     onChatEntryAdded: (entry) => sendToPanel(IPC.CHAT_ENTRY_ADDED, entry),
@@ -280,6 +326,7 @@ app.whenReady().then(() => {
     // an interleaved mess. Single overlay only.
     onStartAudioCapture: () => sendToOneOverlay(AUDIO_IPC.START_CAPTURE),
     onStopAudioCapture: () => sendToOneOverlay(AUDIO_IPC.STOP_CAPTURE),
+    onPushToTalkStopped: () => { pttActive = false; },
     onPlayAudio: (buf, mimeType) => sendToOneOverlay('play-audio', buf, mimeType),
     onCursorVisibilityChanged: (enabled) => applyOverlayVisibility(enabled),
     onStreamVisibilityChanged: (v) => applyStreamVisibility(v),
@@ -418,6 +465,30 @@ app.whenReady().then(() => {
 
   ipcMain.on(IPC.PTT_TEST_START, () => { pttTestMode = true; });
   ipcMain.on(IPC.PTT_TEST_STOP, () => { pttTestMode = false; });
+  ipcMain.on(IPC.CANCEL_PUSH_TO_TALK, () => {
+    // Keep the global shortcut's toggle bookkeeping in sync with the
+    // companion's local-only cancellation. The next press must start a new
+    // turn, not try to stop the already-cancelled one.
+    pttActive = false;
+    pttFireCount = 0;
+    if (pttDebounceTimer) {
+      clearTimeout(pttDebounceTimer);
+      pttDebounceTimer = null;
+    }
+    companion.cancelPushToTalk();
+  });
+  // A visible fallback for macOS users: Electron's global shortcut API has
+  // no key-up event, so a panel button must be able to finish the same turn
+  // without relying on a second accelerator tap.
+  ipcMain.on(IPC.PUSH_TO_TALK_STOP, () => {
+    pttActive = false;
+    pttFireCount = 0;
+    if (pttDebounceTimer) {
+      clearTimeout(pttDebounceTimer);
+      pttDebounceTimer = null;
+    }
+    void companion.stopPushToTalk();
+  });
 
   function registerPttShortcut(accelerator: string): boolean {
     const previous = currentShortcut;
@@ -500,6 +571,7 @@ app.whenReady().then(() => {
   ipcMain.on(IPC.SET_PTT_MODE, (_e, mode) => companion.setPttMode(mode));
   ipcMain.on(IPC.SET_AUTO_TYPE_ENABLED, (_e, enabled: boolean) => companion.setAutoTypeEnabled(enabled));
   ipcMain.on(IPC.SET_AUTO_CLICK_ENABLED, (_e, enabled: boolean) => companion.setAutoClickEnabled(enabled));
+  ipcMain.on(IPC.SET_COMPUTER_USE_ENABLED, (_e, enabled: boolean) => companion.setComputerUseEnabled(enabled));
   ipcMain.on(IPC.SET_STREAM_VISIBILITY, (_e, v: StreamVisibility) => companion.setStreamVisibility(v));
   ipcMain.on(IPC.SET_STREAM_WINDOW_BOUNDS, (_e, b: StreamWindowBounds) => companion.setStreamWindowBounds(b));
   // (clearStream used to be a needless renderer→main→same-renderer
@@ -672,7 +744,7 @@ app.whenReady().then(() => {
   });
 
   // Audio capture: relay chunks from overlay renderer to companion
-  ipcMain.on(AUDIO_IPC.AUDIO_CHUNK, (_e, buffer: Buffer) => {
+  ipcMain.on(AUDIO_IPC.AUDIO_CHUNK, (_e, buffer: Buffer | Uint8Array | ArrayBuffer) => {
     companion.handleAudioChunk(buffer);
   });
 

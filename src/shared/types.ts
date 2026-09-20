@@ -1,3 +1,5 @@
+import { SARVAM_DEFAULT_SPEAKER } from './sarvam';
+
 // ── Voice / State Machine ──────────────────────────────────────────────
 
 export type VoiceState = 'idle' | 'listening' | 'processing' | 'responding';
@@ -329,6 +331,11 @@ export interface KlipSettings {
    */
   autoClickEnabled: boolean;
   /**
+   * Enables the approved computer-use loop for explicit desktop commands.
+   * Each input action still requires a separate, visible confirmation.
+   */
+  computerUseEnabled: boolean;
+  /**
    * Controls the transparent stream window:
    * - 'off'       — never shown
    * - 'responses' — shown only while Klip is actively answering
@@ -360,7 +367,7 @@ export const DEFAULT_SETTINGS: KlipSettings = {
   voiceId: 'pMsXgVXv3BLzUgSXRplE',
   voiceSpeed: 1.0,
   voiceStability: 0.5,
-  sarvamSpeaker: 'shubh',
+  sarvamSpeaker: SARVAM_DEFAULT_SPEAKER,
   speakReplies: true,
 
   groqTranscriptionModel: 'whisper-large-v3-turbo',
@@ -372,6 +379,7 @@ export const DEFAULT_SETTINGS: KlipSettings = {
   pttMode: 'hold',
   autoTypeEnabled: false,
   autoClickEnabled: false,
+  computerUseEnabled: true,
   streamVisibility: 'off',
   streamWindowBounds: null,
 
@@ -411,6 +419,8 @@ export const IPC = {
   MIC_LEVEL: 'mic-level',
   /** getUserMedia / AudioContext failed in the capture renderer. */
   MIC_ERROR: 'mic-error',
+  /** State of the safe observe → approve → act computer-use loop. */
+  COMPUTER_USE_STATE: 'computer-use-state',
 
   // Renderer → Main
   /** Round-trip a candidate key against its provider. */
@@ -446,8 +456,10 @@ export const IPC = {
   SET_LAUNCH_AT_LOGIN: 'set-launch-at-login',
   SET_PUSH_TO_TALK_SHORTCUT: 'set-push-to-talk-shortcut',
   SET_PTT_MODE: 'set-ptt-mode',
+  CANCEL_PUSH_TO_TALK: 'cancel-push-to-talk',
   SET_AUTO_TYPE_ENABLED: 'set-auto-type-enabled',
   SET_AUTO_CLICK_ENABLED: 'set-auto-click-enabled',
+  SET_COMPUTER_USE_ENABLED: 'set-computer-use-enabled',
   SET_STREAM_VISIBILITY: 'set-stream-visibility',
   SET_STREAM_WINDOW_BOUNDS: 'set-stream-window-bounds',
   CLEAR_STREAM: 'clear-stream',

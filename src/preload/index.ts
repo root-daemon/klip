@@ -33,6 +33,7 @@ import type {
   DisplayInfo,
 } from '../shared/types';
 import type { OllamaTestResult, QuickConnectResult } from '../main/services/ollama-api';
+import type { ComputerUseState } from '../main/services/computer-use';
 
 /**
  * Display info handed to overlay windows via `additionalArguments`.
@@ -89,8 +90,11 @@ const api = {
     ipcRenderer.send(IPC.SET_STREAM_WINDOW_BOUNDS, b),
   setPushToTalkShortcut: (accel: string): void => ipcRenderer.send(IPC.SET_PUSH_TO_TALK_SHORTCUT, accel),
   setPttMode: (mode: PttMode): void => ipcRenderer.send(IPC.SET_PTT_MODE, mode),
+  cancelPushToTalk: (): void => ipcRenderer.send(IPC.CANCEL_PUSH_TO_TALK),
+  sendPushToTalk: (): void => ipcRenderer.send(IPC.PUSH_TO_TALK_STOP),
   setAutoTypeEnabled: (enabled: boolean): void => ipcRenderer.send(IPC.SET_AUTO_TYPE_ENABLED, enabled),
   setAutoClickEnabled: (enabled: boolean): void => ipcRenderer.send(IPC.SET_AUTO_CLICK_ENABLED, enabled),
+  setComputerUseEnabled: (enabled: boolean): void => ipcRenderer.send(IPC.SET_COMPUTER_USE_ENABLED, enabled),
   suspendPushToTalkShortcut: (): void => ipcRenderer.send(IPC.SUSPEND_PUSH_TO_TALK_SHORTCUT),
   resumePushToTalkShortcut: (): void => ipcRenderer.send(IPC.RESUME_PUSH_TO_TALK_SHORTCUT),
 
@@ -101,6 +105,23 @@ const api = {
   // ── Permissions ────────────────────────────────────────────────────
   getPermissions: (): Promise<PermissionStatus> => ipcRenderer.invoke(IPC.GET_PERMISSIONS),
   requestPermission: (kind: string): void => ipcRenderer.send(IPC.REQUEST_PERMISSION, kind),
+  requestScreenRecordingPermission: async (): Promise<void> => {
+    // On macOS 15+, this launches Apple's ScreenCaptureKit picker from a
+    // trusted user gesture. We stop the stream immediately: it exists only
+    // to let macOS register and grant KLIP's Screen Recording access.
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      });
+      stream.getTracks().forEach((track) => track.stop());
+    } catch (err) {
+      // Cancellation and unsupported system pickers are expected here. The
+      // main-process request below opens the Screen Recording settings pane.
+      console.info('[Klip] screen permission picker did not return a stream:', err);
+    }
+    ipcRenderer.send(IPC.REQUEST_PERMISSION, 'screen');
+  },
 
   // ── API Keys ───────────────────────────────────────────────────────
   setApiKey: (name: ApiKeyName, value: string): void => ipcRenderer.send(IPC.SET_API_KEY, name, value),
@@ -146,6 +167,11 @@ const api = {
     const handler = (_e: Electron.IpcRendererEvent, specialist: ActiveSpecialist) => cb(specialist);
     ipcRenderer.on(IPC.ACTIVE_SPECIALIST_CHANGED, handler);
     return () => ipcRenderer.removeListener(IPC.ACTIVE_SPECIALIST_CHANGED, handler);
+  },
+  onComputerUseState: (cb: (state: ComputerUseState) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, state: ComputerUseState) => cb(state);
+    ipcRenderer.on(IPC.COMPUTER_USE_STATE, handler);
+    return () => ipcRenderer.removeListener(IPC.COMPUTER_USE_STATE, handler);
   },
 
   // ── Memory / context ───────────────────────────────────────────────

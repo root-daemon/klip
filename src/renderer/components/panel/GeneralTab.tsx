@@ -78,7 +78,7 @@ export function GeneralTab({ settings, memory }: GeneralTabProps) {
             <div className="row-t">Push to talk</div>
             <div className="row-s">
               {settings.pttMode === 'toggle'
-                ? 'tap once to start, tap again to stop'
+                ? 'tap once to start, then pause after speaking to send (tap again to send sooner)'
                 : 'hold to speak, release to send'}
             </div>
           </div>
@@ -220,6 +220,22 @@ export function GeneralTab({ settings, memory }: GeneralTabProps) {
             className={`toggle ${settings.autoClickEnabled ? 'on' : ''}`}
             onClick={() => window.klip.setAutoClickEnabled(!settings.autoClickEnabled)}
             aria-label="Toggle auto-click"
+          />
+        </div>
+        <div className="row">
+          <div className="row-main">
+            <div className="row-t">Computer use</div>
+            <div className="row-s">
+              use OpenAI’s computer-use agent to inspect the live desktop and operate direct commands.
+              Screenshots go to OpenAI; when you directly ask KLIP to act, its validated action loop
+              moves the cursor and carries out the request automatically
+              {isMac && <> — requires <strong>Screen Recording</strong> and <strong>Accessibility</strong> permission on macOS</>}.
+            </div>
+          </div>
+          <button
+            className={`toggle ${settings.computerUseEnabled ? 'on' : ''}`}
+            onClick={() => window.klip.setComputerUseEnabled(!settings.computerUseEnabled)}
+            aria-label="Toggle computer use"
           />
         </div>
         <div className="row">
