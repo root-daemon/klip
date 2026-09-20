@@ -71,7 +71,7 @@ export default function Page() {
             <span><i className="state-finished" />Finished</span>
           </div>
         </div>
-        <div className="live-state" aria-label="Animated example of KLIP processing state">
+        <div className="live-state spotlight-surface" data-spotlight="true" aria-label="Animated example of KLIP processing state">
           <div className="live-state-bar"><span>KLIP / CURRENT STATE</span><b>PROCESSING</b></div>
           <div className="rive-stage"><RiveActivity /></div>
           <p><i />Watching for a fresh screen</p>
@@ -91,7 +91,7 @@ export default function Page() {
             <span><i />Verification</span>
           </div>
         </div>
-        <div className="command-console" aria-label="Animated KLIP operating console">
+        <div className="command-console spotlight-surface" data-spotlight="true" aria-label="Animated KLIP operating console">
           <div className="console-topline"><span>KLIP / ACTIVE LOOP</span><b>LIVE</b></div>
           <div className="console-scene">
             <span className="console-ring ring-a" />
@@ -127,7 +127,7 @@ export default function Page() {
           <p className="kicker">Request routing</p>
           <h2 id="routing-heading">One ask. The right kind of help.</h2>
         </div>
-        <div className="routing-map">
+        <div className="routing-map spotlight-surface" data-spotlight="true">
           <div className="route-source">
             <span>INPUT</span>
             <strong>Your words</strong>
@@ -160,27 +160,27 @@ export default function Page() {
       </section>
 
       <section className="capability-grid">
-        <article className="capability capability-wide">
+        <article className="capability capability-wide spotlight-surface" data-spotlight="true">
           <p className="kicker">Voice and conversation</p>
           <h2>Hold a shortcut. Start talking.</h2>
           <p>Use push-to-talk or toggle mode. KLIP transcribes through Groq, OpenAI, Sarvam, or available native speech services, then can answer aloud with ElevenLabs or Sarvam.</p>
           <div className="voice-rive-wrap" aria-hidden="true"><RiveActivity className="voice-rive" /></div>
         </article>
-        <article className="capability capability-pet">
+        <article className="capability capability-pet spotlight-surface" data-spotlight="true">
           <Image src={klipPet} alt="" />
           <p>The companion is also the status indicator. Its gaze and motion make listening, thinking, success, and failure legible at a glance.</p>
         </article>
-        <article className="capability">
+        <article className="capability spotlight-surface" data-spotlight="true">
           <p className="kicker">Workforce</p>
           <h2>A named crew for wider tasks.</h2>
           <p>When work spans applications, KLIP coordinates named workers. Input stays serialized because there is one real mouse.</p>
         </article>
-        <article className="capability">
+        <article className="capability spotlight-surface" data-spotlight="true">
           <p className="kicker">Memory</p>
           <h2>Context that stays bounded.</h2>
           <p>Older turns compact into a visible rolling summary so long sessions remain useful without a silent context cliff.</p>
         </article>
-        <article className="capability capability-docs">
+        <article className="capability capability-docs spotlight-surface" data-spotlight="true">
           <p className="kicker">Documents</p>
           <h2>Ask for a file. Get a real file.</h2>
           <p>KLIP can generate Excel workbooks, PDFs, CSV files, and text documents directly into your Documents folder.</p>
@@ -195,7 +195,7 @@ export default function Page() {
           <p>Switch between cloud and local models without changing how you work. API keys remain in your operating system's encrypted secret store.</p>
         </div>
         <div className="providers" aria-label="Supported reasoning providers">
-          {PROVIDERS.map((provider) => <span key={provider}>{provider}</span>)}
+          {PROVIDERS.map((provider) => <span className="spotlight-surface" data-spotlight="true" key={provider}>{provider}</span>)}
         </div>
       </section>
 
