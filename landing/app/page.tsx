@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import { HeroVideo } from './components/HeroVideo';
+import { MotionField } from './components/MotionField';
 import { RiveActivity } from './components/RiveActivity';
 import klipPet from '../public/klip-pet.png';
 
@@ -11,6 +12,7 @@ const PROVIDERS = ['Anthropic Claude', 'OpenAI', 'Google Gemini', 'Ollama'];
 export default function Page() {
   return (
     <main>
+      <MotionField />
       <nav className="nav" aria-label="Main navigation">
         <a className="nav-brand" href="#top" aria-label="KLIP home">
           <Image src={klipPet} alt="" />
@@ -73,6 +75,37 @@ export default function Page() {
           <div className="live-state-bar"><span>KLIP / CURRENT STATE</span><b>PROCESSING</b></div>
           <div className="rive-stage"><RiveActivity /></div>
           <p><i />Watching for a fresh screen</p>
+        </div>
+      </section>
+
+      <section className="command-deck" aria-labelledby="command-heading">
+        <div className="command-copy">
+          <p className="kicker">A visible operating loop</p>
+          <h2 id="command-heading">See intent become progress.</h2>
+          <p>
+            KLIP keeps the work legible while it is happening. The companion, action loop, and next decision stay in view instead of disappearing behind a loading state.
+          </p>
+          <div className="command-chips" aria-label="Example operating states">
+            <span><i />Fresh context</span>
+            <span><i />One next action</span>
+            <span><i />Verification</span>
+          </div>
+        </div>
+        <div className="command-console" aria-label="Animated KLIP operating console">
+          <div className="console-topline"><span>KLIP / ACTIVE LOOP</span><b>LIVE</b></div>
+          <div className="console-scene">
+            <span className="console-ring ring-a" />
+            <span className="console-ring ring-b" />
+            <RiveActivity className="console-rive" />
+            <Image className="console-pet" src={klipPet} alt="" />
+            <span className="console-ping ping-a" />
+            <span className="console-ping ping-b" />
+          </div>
+          <div className="console-log" aria-hidden="true">
+            <p><b>01</b><span>screen context received</span><i>ready</i></p>
+            <p><b>02</b><span>selecting one next move</span><i>active</i></p>
+            <p><b>03</b><span>waiting to verify outcome</span><i>queued</i></p>
+          </div>
         </div>
       </section>
 
