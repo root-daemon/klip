@@ -1,4 +1,5 @@
 import { getApiKey } from './key-store';
+import { normalizeSarvamSpeaker, SARVAM_TTS_MODEL } from '../../shared/sarvam';
 
 const SARVAM_TTS_URL = 'https://api.sarvam.ai/text-to-speech';
 
@@ -29,8 +30,8 @@ export class SarvamTTS {
       body: JSON.stringify({
         text,
         target_language_code: options.languageCode ?? 'en-IN',
-        speaker: options.speaker,
-        model: 'bulbul:v3',
+        speaker: normalizeSarvamSpeaker(options.speaker),
+        model: SARVAM_TTS_MODEL,
         enable_preprocessing: true,
       }),
     });

@@ -1,5 +1,6 @@
 import type { ApiKeyName, ApiKeyValidation } from '../../shared/types';
 import { getApiKey } from './key-store';
+import { PROBES } from './provider-probes';
 
 /**
  * Prove a key is accepted by its provider before we rely on it.
@@ -13,70 +14,6 @@ import { getApiKey } from './key-store';
  */
 
 const TIMEOUT_MS = 15_000;
-
-interface Probe {
-  url: string;
-  method: 'GET' | 'POST';
-  headers: Record<string, string>;
-  body?: string;
-}
-
-const PROBES: Record<ApiKeyName, (key: string) => Probe> = {
-  anthropic: (key) => ({
-    url: 'https://api.anthropic.com/v1/messages',
-    method: 'POST',
-    headers: {
-      'x-api-key': key,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'hi' }],
-    }),
-  }),
-  openai: (key) => ({
-    url: 'https://api.openai.com/v1/chat/completions',
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'hi' }],
-    }),
-  }),
-  gemini: (key) => ({
-    url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${key}`,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: 'hi' }] }],
-      generationConfig: { maxOutputTokens: 1 },
-    }),
-  }),
-  elevenlabs: (key) => ({
-    url: 'https://api.elevenlabs.io/v1/user',
-    method: 'GET',
-    headers: { 'xi-api-key': key },
-  }),
-  sarvam: (key) => ({
-    url: 'https://api.sarvam.ai/text-to-speech',
-    method: 'POST',
-    headers: { 'api-subscription-key': key, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      text: 'hi',
-      target_language_code: 'en-IN',
-      speaker: 'shubh',
-      model: 'bulbul:v3',
-    }),
-  }),
-  groq: (key) => ({
-    url: 'https://api.groq.com/openai/v1/models',
-    method: 'GET',
-    headers: { Authorization: `Bearer ${key}` },
-  }),
-};
 
 /** Pull the human-readable message out of a provider error body. */
 function extractMessage(text: string): string {

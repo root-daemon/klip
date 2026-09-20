@@ -368,8 +368,8 @@ function PermissionsStep({ onNext, onBack }: { onNext: () => void; onBack: () =>
                 <Status kind="warn">not granted</Status>
               )}
               {!screenOk && (
-                <button className="btn xs" onClick={() => window.klip.requestPermission('screen')}>
-                  Grant
+                <button className="btn xs" onClick={() => void window.klip.requestScreenRecordingPermission()}>
+                  Allow Screen Recording
                 </button>
               )}
             </div>
@@ -569,7 +569,7 @@ function EarStep({ settings, onNext, onBack }: { settings: KlipSettings; onNext:
 
 const VOICE_PROVIDERS: Array<{ id: TtsProvider; label: string; sub: string; logo: string; cls: string }> = [
   { id: 'elevenlabs', label: 'ElevenLabs', sub: 'Large curated voice catalog', logo: '11', cls: 'eleven' },
-  { id: 'sarvam', label: 'Sarvam AI', sub: 'Bulbul v2 · multilingual speakers', logo: 'S', cls: 'sarvam' },
+  { id: 'sarvam', label: 'Sarvam AI', sub: 'Bulbul v3 · multilingual speakers', logo: 'S', cls: 'sarvam' },
 ];
 
 function VoiceStep({ settings, onNext, onBack }: { settings: KlipSettings; onNext: () => void; onBack: () => void }) {
@@ -932,7 +932,16 @@ function TryStep({ settings, voiceState, onNext, onBack }: {
         onNext={onNext}
         nextDisabled={!completed}
         nextHint={completed ? undefined : 'Continue unlocks after one successful answer.'}
-        secondary={!completed && <button className="btn subtle" onClick={onNext}>Skip</button>}
+        secondary={!completed && (
+          <>
+            {voiceState === 'listening' && (
+              <button className="btn subtle" onClick={() => window.klip.cancelPushToTalk()}>
+                Cancel recording
+              </button>
+            )}
+            <button className="btn subtle" onClick={onNext}>Skip</button>
+          </>
+        )}
       />
     </>
   );

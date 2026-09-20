@@ -102,6 +102,9 @@ export function HomeTab({ voiceState, settings, memory, onNavigate }: HomeTabPro
   const pct = memory ? Math.round((memory.tokens / memory.tokenBudget) * 100) : 0;
 
   const shortcutKeys = settings.pushToTalkShortcut.split('+').filter(Boolean);
+  // Electron's macOS global shortcuts report presses, but not the matching
+  // key release, so the main process deliberately uses tap-to-toggle there.
+  const usesTapToTalk = window.klip.platform === 'darwin' || settings.pttMode === 'toggle';
   const mindLogo = MIND_LOGO[mindProvider] ?? MIND_LOGO.anthropic;
   const petMood = ready ? voiceState : 'idle';
 
@@ -112,7 +115,9 @@ export function HomeTab({ voiceState, settings, memory, onNavigate }: HomeTabPro
       </h1>
       <p className="main-lead">
         {ready
-          ? 'Hold the push-to-talk shortcut from anywhere and KLIP will listen, think, and reply.'
+          ? usesTapToTalk
+            ? 'Tap the push-to-talk shortcut, speak, then pause to send. Tap again to send sooner.'
+            : 'Hold the push-to-talk shortcut from anywhere and KLIP will listen, think, and reply.'
           : `${connectedCount} of ${total} providers connected. Add the remaining keys to start talking.`}
       </p>
 
@@ -137,11 +142,11 @@ export function HomeTab({ voiceState, settings, memory, onNavigate }: HomeTabPro
           <Waveform state={ready ? voiceState : 'idle'} bars={23} height={72} />
           {ready ? (
             <div className="home-ptt">
-              hold{' '}
+              {usesTapToTalk ? 'tap' : 'hold'}{' '}
               {shortcutKeys.map((k, i) => (
                 <kbd key={`${k}-${i}`}>{k}</kbd>
               ))}{' '}
-              to talk
+              {usesTapToTalk ? 'to talk' : 'to talk'}
             </div>
           ) : (
             <div className="home-ptt blocked">add the missing key to start talking</div>
@@ -172,6 +177,11 @@ export function HomeTab({ voiceState, settings, memory, onNavigate }: HomeTabPro
               </div>
               <div className="s">{ready ? 'all providers connected' : `${connectedCount} of ${total} connected`}</div>
             </div>
+            {voiceState === 'listening' && (
+              <button className="btn xs" onClick={() => window.klip.sendPushToTalk()}>
+                Send now
+              </button>
+            )}
           </div>
         </div>
       </motion.div>
@@ -261,7 +271,11 @@ export function HomeTab({ voiceState, settings, memory, onNavigate }: HomeTabPro
         </div>
       </motion.div>
 
-      <Tour shortcut={settings.pushToTalkShortcut} onNavigate={onNavigate} />
+      <Tour
+        shortcut={settings.pushToTalkShortcut}
+        usesTapToTalk={usesTapToTalk}
+        onNavigate={onNavigate}
+      />
     </>
   );
 }

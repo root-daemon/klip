@@ -27,12 +27,11 @@ const ROWS: Row[] = [
   {
     kind: 'accessibility',
     label: 'Accessibility',
-    reason: 'so KLIP can type or click for you',
+    reason: 'so KLIP can click and type for the computer-use commands you give it',
     platforms: ['darwin'],
-    // Only nag the user about this one when they've actually turned on
-    // auto-type or auto-click. Keeps the banner quiet for users who
-    // never care about either feature.
-    visibleWhen: (s) => !!s?.autoTypeEnabled || !!s?.autoClickEnabled,
+    // Only nag when a feature needs native input, keeping the banner quiet
+    // for users who only use the conversational companion.
+    visibleWhen: (s) => !!s?.autoTypeEnabled || !!s?.autoClickEnabled || !!s?.computerUseEnabled,
   },
 ];
 
@@ -87,9 +86,15 @@ export function PermissionsBanner() {
             </div>
             <button
               className="perm-banner-btn"
-              onClick={() => window.klip.requestPermission(r.kind)}
+              onClick={() => {
+                if (r.kind === 'screen' && platform === 'darwin') {
+                  void window.klip.requestScreenRecordingPermission();
+                } else {
+                  window.klip.requestPermission(r.kind);
+                }
+              }}
             >
-              {isWin ? 'Open settings' : 'Grant'}
+              {isWin ? 'Open settings' : r.kind === 'screen' ? 'Allow screen recording' : 'Grant'}
             </button>
           </div>
         ))}

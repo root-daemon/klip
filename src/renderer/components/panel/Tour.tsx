@@ -3,6 +3,7 @@ import { KlipPet, type PetMood } from '../KlipPet';
 
 interface TourProps {
   shortcut: string;
+  usesTapToTalk: boolean;
   onNavigate: (tab: 'chats' | 'mind' | 'voice' | 'ear' | 'general' | 'agents' | 'settings') => void;
 }
 
@@ -25,14 +26,16 @@ const cardIn = {
   }),
 };
 
-export function Tour({ shortcut, onNavigate }: TourProps) {
+export function Tour({ shortcut, usesTapToTalk, onNavigate }: TourProps) {
   const keys = shortcut.split('+').filter(Boolean);
 
   const features: Feature[] = [
     {
       id: 'ptt',
-      title: 'Hold the shortcut, ask anything.',
-      body: `Hold ${keys.join('+')} from anywhere and speak. Release when you're done — klip takes it from there.`,
+      title: usesTapToTalk ? 'Tap the shortcut, ask anything.' : 'Hold the shortcut, ask anything.',
+      body: usesTapToTalk
+        ? `Tap ${keys.join('+')} from anywhere to speak. Pause when you're done and klip sends it; tap again to send sooner.`
+        : `Hold ${keys.join('+')} from anywhere and speak. Release when you're done — klip takes it from there.`,
       mood: 'listening',
     },
     {

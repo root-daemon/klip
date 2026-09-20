@@ -11,12 +11,20 @@ import type { ActiveSpecialist } from '../../shared/types';
  */
 
 const ACTION_VERBS =
-  /\b(click|open|close|point|show me|find (the|my)|type|fill in|write|draft|paste|select|choose|pick|navigate|go to|switch to|scroll|drag|press|hit|tap|enter|toggle|check|uncheck|expand|collapse|minimize|maximize)\b/i;
+  /\b(click|open|launch|start|close|point|show me|find (the|my)|type|fill in|write|draft|paste|select|choose|pick|navigate|go to|switch to|focus|scroll|drag|press|hit|tap|enter|toggle|check|uncheck|expand|collapse|minimize|maximize)\b/i;
 
 const LOCATION_QUESTIONS =
   /\bwhere('?s| is| are)\b.*\b(button|icon|link|field|menu|tab|option|setting|toggle|checkbox|panel)\b/i;
 
 const HOW_TO_PATTERN = /\bhow (do|can) i\b/i;
+
+/**
+ * Computer use is intentionally narrower than the existing desktop mode.
+ * "Where is Save?" should keep using the non-invasive pointing companion;
+ * only a direct request to operate the desktop can enter the approval loop.
+ */
+const COMPUTER_USE_VERBS =
+  /\b(click|open|launch|start|close|type|fill in|write|paste|select|choose|pick|navigate|go to|switch to|focus|scroll|drag|press|hit|tap|enter|toggle|check|uncheck|expand|collapse|minimize|maximize|save|download|upload)\b/i;
 
 export function classifyIntent(transcript: string): ActiveSpecialist {
   const text = transcript.trim();
@@ -58,4 +66,9 @@ export function isComplexDesktopTask(transcript: string): boolean {
   // (sequencing language, a named app/site, or a second verb) so a
   // simple "search for the settings icon" doesn't trigger the full loop.
   return verbMatches.length >= 2 || (verbMatches.length >= 1 && (hasSequencing || mentionsAppOrSite));
+}
+
+/** A direct request to operate the desktop enters the dedicated tool loop. */
+export function isComputerUseIntent(transcript: string): boolean {
+  return COMPUTER_USE_VERBS.test(transcript.trim());
 }

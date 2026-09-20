@@ -13,7 +13,15 @@ import { typeText, clickAt, scroll, isAccessibilityGranted, promptAccessibility 
 import { createExcel, createPdf, revealDocument } from './services/document-generator';
 import { runComputerUseTask } from './services/computer-use-agent';
 import { ContextManager } from './services/context-manager';
-import { classifyIntent, isComplexDesktopTask } from './services/intent-router';
+import { classifyIntent, isComplexDesktopTask, isComputerUseIntent } from './services/intent-router';
+import { ComputerUseController, type ComputerUseState } from './services/computer-use';
+import { ElectronDesktopAdapter } from './services/desktop-adapter';
+import { OpenAIComputerPlanner } from './services/openai-computer';
+import { containsSpeech } from './services/voice-activity';
+import {
+  MAC_SCREEN_RECORDING_SETTINGS_URL,
+  planMacScreenRecordingPermissionRequest,
+} from './services/permission-request';
 import * as settingsStore from './services/settings-store';
 import type { StoredSettings } from './services/settings-store';
 import * as keyStore from './services/key-store';
@@ -70,11 +78,15 @@ export interface CompanionCallbacks {
   /** A step in the real multi-step computer-use loop just executed (or
    *  null when the task ends) — see computer-use-agent.ts. */
   onAgentStep: (step: AgentStepEvent | null) => void;
+  /** State from the OpenAI desktop tool loop. */
+  onComputerUseState: (state: ComputerUseState) => void;
   onSettingsChanged: (settings: KlipSettings) => void;
   onMemoryStatsChanged: (stats: MemoryStats) => void;
   onChatEntryAdded: (entry: ChatEntry) => void;
   onStartAudioCapture: () => void;
   onStopAudioCapture: () => void;
+  /** Keeps the global PTT toggle in sync when speech silence ends a turn. */
+  onPushToTalkStopped: () => void;
   onPlayAudio: (audioBuffer: Buffer, mimeType: string) => void;
   onCursorVisibilityChanged: (enabled: boolean) => void;
   onStreamVisibilityChanged: (v: StreamVisibility) => void;
@@ -90,7 +102,9 @@ export class CompanionManager {
   private elevenLabsTts: ElevenLabsTTS;
   private sarvamTts: SarvamTTS;
   private context: ContextManager;
+  private computerUse: ComputerUseController;
   private transcriptionProvider: TranscriptionProvider | null = null;
+  private computerUseRequest: { userText: string; settings: StoredSettings; turnId: number } | null = null;
 
   private voiceState: VoiceState = 'idle';
   private lastScreenshots: ScreenCapture[] = [];
@@ -124,6 +138,10 @@ export class CompanionManager {
    * level events that the panel visualises.
    */
   private micTestActive = false;
+  private speechEndTimer: ReturnType<typeof setTimeout> | null = null;
+  private heardSpeechInTurn = false;
+  /** Send a voice command shortly after its last audible PCM frame. */
+  private static readonly SPEECH_END_SILENCE_MS = 1_200;
 
   constructor(callbacks: CompanionCallbacks) {
     this.callbacks = callbacks;
@@ -134,6 +152,18 @@ export class CompanionManager {
     this.elevenLabsTts = new ElevenLabsTTS();
     this.sarvamTts = new SarvamTTS();
     this.context = new ContextManager();
+    this.computerUse = new ComputerUseController({
+      desktop: new ElectronDesktopAdapter(),
+      // Computer Use has a dedicated OpenAI tool loop, independent of the
+      // conversational model selected in Mind.
+      planner: new OpenAIComputerPlanner({ getApiKey: () => keyStore.getApiKey('openai') ?? undefined }),
+      // A spoken desktop request is direct user authorization to carry out
+      // the bounded tool loop. Keep a short preview so the companion and the
+      // real pointer visibly arrive together before each input action.
+      autoApprove: true,
+      autoApprovalPreviewMs: 450,
+      onStateChange: (state) => this.callbacks.onComputerUseState(state),
+    });
 
     analytics.initAnalytics('', 'https://us.i.posthog.com');
     analytics.trackAppOpened();
@@ -285,6 +315,16 @@ export class CompanionManager {
     settingsStore.set('autoClickEnabled', enabled);
     if (enabled && !isAccessibilityGranted()) {
       promptAccessibility();
+    }
+    this.emitSettings();
+  }
+
+  setComputerUseEnabled(enabled: boolean): void {
+    settingsStore.set('computerUseEnabled', enabled);
+    if (enabled && !isAccessibilityGranted()) promptAccessibility();
+    if (!enabled && this.computerUseRequest) {
+      const state = this.computerUse.cancel();
+      void this.finishComputerUse(state);
     }
     this.emitSettings();
   }
@@ -501,9 +541,12 @@ export class CompanionManager {
 
     if (kind === 'screen') {
       const status = systemPreferences.getMediaAccessStatus('screen');
-      if (status === 'not-determined') {
-        // No askForMediaAccess equivalent for screen — but actually
-        // *attempting* a capture provokes the system prompt the first time.
+      const plan = planMacScreenRecordingPermissionRequest(status);
+
+      if (plan.shouldProbeCapture) {
+        // Electron has no askForMediaAccess('screen'). A real capture attempt
+        // makes macOS associate this permission with KLIP before we open the
+        // privacy panel where the user enables it.
         try {
           await desktopCapturer.getSources({
             types: ['screen'],
@@ -512,10 +555,14 @@ export class CompanionManager {
         } catch (err) {
           console.error('[Klip] screen permission probe failed:', err);
         }
-      } else if (status === 'denied' || status === 'restricted') {
-        shell.openExternal(
-          'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',
-        );
+      }
+
+      if (plan.shouldOpenSettings) {
+        try {
+          await shell.openExternal(MAC_SCREEN_RECORDING_SETTINGS_URL);
+        } catch (err) {
+          console.error('[Klip] could not open Screen Recording settings:', err);
+        }
       }
     }
   }
@@ -547,6 +594,23 @@ export class CompanionManager {
     }
     if (!this.isRecording) return;
     await this.stopRecordingAndProcess();
+  }
+
+  /**
+   * Stop an in-progress recording without transcribing or sending any audio.
+   * Setup uses this as a recovery path when a toggle shortcut gets stranded
+   * in listening mode (for example after an interrupted second key press).
+   */
+  cancelPushToTalk(): void {
+    // Invalidate an in-flight provider start before it can reopen capture.
+    this.turnId += 1;
+    this.isRecording = false;
+    this.clearSpeechEndTimer();
+    this.heardSpeechInTurn = false;
+    this.transcriptionProvider = null;
+    this.callbacks.onStopAudioCapture();
+    this.callbacks.onPushToTalkStopped();
+    this.setVoiceState('idle');
   }
 
   // ── Mic check (setup) ────────────────────────────────────────────────
@@ -688,32 +752,52 @@ export class CompanionManager {
     // Bump the turn and abort any in-flight work from the previous one
     // so the user's new message supersedes whatever Klip was doing.
     this.turnId += 1;
+    const recordingTurnId = this.turnId;
     if (this.currentAbort) {
       this.currentAbort.abort();
       this.currentAbort = null;
+    }
+    if (this.computerUseRequest) {
+      this.computerUse.cancel();
+      this.computerUseRequest = null;
     }
     this.clearWalkthroughTimers();
     this.callbacks.onWalkthrough(null);
     this.callbacks.onWalkthroughStep(null);
 
     this.isRecording = true;
+    this.clearSpeechEndTimer();
+    this.heardSpeechInTurn = false;
     this.setVoiceState('listening');
     analytics.trackPushToTalkStarted();
 
     const provider = settingsStore.get('transcriptionProvider');
-    this.transcriptionProvider = createTranscriptionProvider(provider);
+    const transcriptionProvider = createTranscriptionProvider(provider);
+    this.transcriptionProvider = transcriptionProvider;
 
-    this.transcriptionProvider.onPartialTranscript = (text) => {
+    transcriptionProvider.onPartialTranscript = (text) => {
       this.callbacks.onTranscriptUpdate({ text, isFinal: false });
     };
 
     try {
-      await this.transcriptionProvider.start();
+      await transcriptionProvider.start();
+      // A cancellation can land while a provider is initialising. Do not
+      // reopen the microphone or surface a stale error after that cancel.
+      if (
+        this.turnId !== recordingTurnId ||
+        this.transcriptionProvider !== transcriptionProvider ||
+        !this.isRecording
+      ) {
+        return;
+      }
       // A setup mic check may already hold the capture open; starting
       // again is harmless (the overlay just re-opens the gate).
       this.micTestActive = false;
       this.callbacks.onStartAudioCapture();
     } catch (err) {
+      if (this.turnId !== recordingTurnId || this.transcriptionProvider !== transcriptionProvider) {
+        return;
+      }
       console.error('Failed to start transcription:', err);
       this.setVoiceState('idle');
       this.isRecording = false;
@@ -724,13 +808,23 @@ export class CompanionManager {
 
   private async stopRecordingAndProcess(): Promise<void> {
     this.isRecording = false;
+    this.clearSpeechEndTimer();
+    this.heardSpeechInTurn = false;
     this.callbacks.onStopAudioCapture();
+    this.callbacks.onPushToTalkStopped();
     analytics.trackPushToTalkReleased();
 
     if (!this.transcriptionProvider) {
       this.setVoiceState('idle');
       return;
     }
+
+    // Transcription is a network operation for every supported provider.
+    // Leaving the companion in "listening" while that request is in flight
+    // makes a successful second tap look like it was ignored, particularly
+    // on macOS's tap-to-toggle path. The recording has already stopped at
+    // this point, so show the next real phase immediately.
+    this.setVoiceState('processing');
 
     // A failed upload (bad Groq key, offline, 4xx) used to throw straight
     // out of here — nothing caught it, so the voice state stayed stuck on
@@ -761,7 +855,6 @@ export class CompanionManager {
     const specialist = classifyIntent(result.text);
     this.callbacks.onActiveSpecialistChanged(specialist);
     this.setVoiceState('processing');
-
     // Genuinely multi-step desktop tasks ("check my mail and reply to
     // the latest message") need to see the result of each action before
     // deciding the next one — the [POINT:...]/[CLICK:...] tags below are
@@ -782,6 +875,13 @@ export class CompanionManager {
       );
     }
 
+    // The OpenAI computer tool is the general desktop executor. It also
+    // remains available when the conversational Mind provider is Claude,
+    // Gemini, or local, because it owns a dedicated OpenAI session.
+    if (settings.computerUseEnabled && isComputerUseIntent(result.text)) {
+      await this.startComputerUse(result.text, settings);
+      return;
+    }
     try {
       this.lastScreenshots = await captureAllDisplays();
     } catch (err) {
@@ -1057,9 +1157,101 @@ export class CompanionManager {
     if (this.currentAbort === abort) this.currentAbort = null;
   }
 
-  handleAudioChunk(buffer: Buffer): void {
+  /** Called by the native approval dialog with the exact proposal it displayed. */
+  async approveComputerAction(proposalId: string): Promise<void> {
+    if (this.computerUse.getState().proposal?.id !== proposalId) return;
+    const state = await this.computerUse.approve(proposalId);
+    await this.finishComputerUse(state);
+  }
+
+  rejectComputerAction(proposalId: string): void {
+    if (this.computerUse.getState().proposal?.id !== proposalId) return;
+    const state = this.computerUse.reject(proposalId);
+    void this.finishComputerUse(state);
+  }
+
+  private async startComputerUse(userText: string, settings: StoredSettings): Promise<void> {
+    this.computerUseRequest = { userText, settings, turnId: this.turnId };
+    const state = await this.computerUse.start(userText);
+    await this.finishComputerUse(state);
+  }
+
+  /**
+   * ComputerUseController emits intermediate planning / approval states. Only
+   * terminal states settle the voice turn, preserving its familiar chat/TTS
+   * outcome while the controller owns the observe-act-verify loop.
+   */
+  private async finishComputerUse(state: ComputerUseState): Promise<void> {
+    if (state.status === 'planning' || state.status === 'awaiting-approval' || state.status === 'executing') return;
+    const request = this.computerUseRequest;
+    if (!request) return;
+    this.computerUseRequest = null;
+    if (request.turnId !== this.turnId) return;
+
+    if (state.status === 'completed') {
+      const summary = state.summary || 'Done.';
+      analytics.trackAiResponseReceived(summary);
+      this.callbacks.onAiResponseComplete(summary);
+      await this.context.recordExchange(request.userText, summary);
+      if (request.turnId !== this.turnId) return;
+      this.emitMemoryStats();
+      const entry = chatHistory.append({ userText: request.userText, assistantText: summary });
+      this.callbacks.onChatEntryAdded(entry);
+      if (request.settings.speakReplies && this.hasActiveTtsKey(request.settings)) {
+        try {
+          const { buffer, mimeType } = await this.synthesizeReply(summary, request.settings);
+          if (request.turnId !== this.turnId) return;
+          this.setVoiceState('responding');
+          this.callbacks.onPlayAudio(buffer, mimeType);
+        } catch (err) {
+          console.error('Computer-use TTS error:', err);
+        }
+      }
+    } else if (state.status === 'cancelled') {
+      // The live stream has already created a turn from the final transcript.
+      // Complete it even when the user declines the first approval card.
+      this.callbacks.onAiResponseComplete('Computer use cancelled.');
+    } else {
+      const message = state.error ?? 'Computer use could not continue.';
+      this.callbacks.onAiResponseComplete(message);
+      this.callbacks.onError(message);
+    }
+
+    if (request.turnId === this.turnId) {
+      this.setVoiceState('idle');
+      this.callbacks.onActiveSpecialistChanged(null);
+    }
+  }
+
+  handleAudioChunk(buffer: Buffer | Uint8Array | ArrayBuffer): void {
     if (!this.isRecording) return;
-    this.transcriptionProvider?.sendAudio(buffer);
+    // Electron IPC structured-clones a renderer Buffer as Uint8Array on
+    // macOS. Normalize at the process boundary so both transcription and
+    // local voice-activity detection always receive the Node Buffer API.
+    const pcm = Buffer.isBuffer(buffer)
+      ? buffer
+      : buffer instanceof ArrayBuffer
+        ? Buffer.from(buffer)
+        : Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    this.transcriptionProvider?.sendAudio(pcm);
+    if (!containsSpeech(pcm)) return;
+
+    this.heardSpeechInTurn = true;
+    this.clearSpeechEndTimer();
+    this.speechEndTimer = setTimeout(() => {
+      this.speechEndTimer = null;
+      if (!this.isRecording || !this.heardSpeechInTurn) return;
+      // macOS globalShortcut has no key-up event. Ending a voice turn from
+      // actual silence means a one-tap command cannot remain stuck in
+      // Listening just because the second accelerator press was missed.
+      void this.stopPushToTalk();
+    }, CompanionManager.SPEECH_END_SILENCE_MS);
+  }
+
+  private clearSpeechEndTimer(): void {
+    if (!this.speechEndTimer) return;
+    clearTimeout(this.speechEndTimer);
+    this.speechEndTimer = null;
   }
 
   // ── Internal ─────────────────────────────────────────────────────────
