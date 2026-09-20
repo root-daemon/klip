@@ -1,4 +1,4 @@
-import { systemPreferences } from 'electron';
+import { systemPreferences, screen } from 'electron';
 
 /**
  * Native desktop-control wrapper (keyboard + mouse). The underlying
@@ -9,9 +9,50 @@ import { systemPreferences } from 'electron';
  * returns `false` if the module or the required permission is
  * unavailable, and the caller falls back to a safer degraded behavior
  * (clipboard handoff for typing, point-only for clicking).
+ *
+ * Coordinate space: every function here takes/returns Electron's
+ * logical (DIP) pixel coordinates — the same space as `screen.bounds`,
+ * screenshots, and the [POINT:...]/[CLICK:...] tag math — NOT nut-js's
+ * own coordinates. nut-js/libnut reports its screen size as "the
+ * hardware resolution" (physical pixels), confirmed empirically on this
+ * codebase: at 150% Windows scaling, nut-js's cursor readback was
+ * exactly 1.5x Electron's `screen.getCursorScreenPoint()` in both axes.
+ * Passing logical coordinates straight through (the original bug) means
+ * every click lands short of its target by the scale factor — barely
+ * noticeable near the screen origin, badly wrong everywhere else. All
+ * physical/logical conversion is centralized in toPhysicalPoint/
+ * toLogicalPoint below so callers only ever think in logical pixels.
  */
 
 type NutJs = typeof import('@nut-tree-fork/nut-js');
+
+/** Logical (Electron) → physical (nut-js) pixel coordinates, using the
+ *  scale factor of whichever display actually contains the point.
+ *  Correct for single-monitor and uniform-DPI multi-monitor setups;
+ *  best-effort only for genuinely mixed-DPI multi-monitor arrangements
+ *  (Windows doesn't expose a simpler mapping for that case). */
+function toPhysicalPoint(x: number, y: number): { x: number; y: number } {
+  const display = screen.getDisplayNearestPoint({ x: Math.round(x), y: Math.round(y) });
+  const sf = display.scaleFactor || 1;
+  return { x: Math.round(x * sf), y: Math.round(y * sf) };
+}
+
+/** Physical (nut-js) → logical (Electron) pixel coordinates — the
+ *  inverse of toPhysicalPoint, used when reading the cursor position
+ *  back out. Finds the containing display by its own physical bounds
+ *  (logical bounds scaled by that display's own factor). */
+function toLogicalPoint(physX: number, physY: number): { x: number; y: number } {
+  for (const d of screen.getAllDisplays()) {
+    const sf = d.scaleFactor || 1;
+    const px0 = d.bounds.x * sf;
+    const py0 = d.bounds.y * sf;
+    if (physX >= px0 && physX < px0 + d.bounds.width * sf && physY >= py0 && physY < py0 + d.bounds.height * sf) {
+      return { x: Math.round(physX / sf), y: Math.round(physY / sf) };
+    }
+  }
+  const sf = screen.getPrimaryDisplay().scaleFactor || 1;
+  return { x: Math.round(physX / sf), y: Math.round(physY / sf) };
+}
 
 let nutJs: NutJs | null = null;
 let loadAttempted = false;
@@ -86,7 +127,8 @@ export async function clickAt(x: number, y: number): Promise<boolean> {
   if (!lib) return false;
   if (!isAccessibilityGranted()) return false;
   try {
-    await lib.mouse.setPosition(new lib.Point(Math.round(x), Math.round(y)));
+    const p = toPhysicalPoint(x, y);
+    await lib.mouse.setPosition(new lib.Point(p.x, p.y));
     await lib.mouse.leftClick();
     return true;
   } catch (err) {
@@ -128,7 +170,8 @@ export async function moveMouseTo(x: number, y: number): Promise<boolean> {
   if (!lib) return false;
   if (!isAccessibilityGranted()) return false;
   try {
-    await lib.mouse.setPosition(new lib.Point(Math.round(x), Math.round(y)));
+    const p = toPhysicalPoint(x, y);
+    await lib.mouse.setPosition(new lib.Point(p.x, p.y));
     return true;
   } catch (err) {
     console.error('[Klip] mouse move failed:', err);
@@ -157,7 +200,9 @@ export async function mouseDrag(x1: number, y1: number, x2: number, y2: number):
   if (!lib) return false;
   if (!isAccessibilityGranted()) return false;
   try {
-    await lib.mouse.drag([new lib.Point(Math.round(x1), Math.round(y1)), new lib.Point(Math.round(x2), Math.round(y2))]);
+    const p1 = toPhysicalPoint(x1, y1);
+    const p2 = toPhysicalPoint(x2, y2);
+    await lib.mouse.drag([new lib.Point(p1.x, p1.y), new lib.Point(p2.x, p2.y)]);
     return true;
   } catch (err) {
     console.error('[Klip] mouse drag failed:', err);
@@ -165,12 +210,15 @@ export async function mouseDrag(x1: number, y1: number, x2: number, y2: number):
   }
 }
 
+/** Returns the cursor position in logical (Electron) pixels — converted
+ *  back from nut-js's physical coordinates, so callers never need to
+ *  think about the physical/logical distinction themselves. */
 export async function getCursorPos(): Promise<{ x: number; y: number } | null> {
   const lib = await load();
   if (!lib) return null;
   try {
     const p = await lib.mouse.getPosition();
-    return { x: p.x, y: p.y };
+    return toLogicalPoint(p.x, p.y);
   } catch (err) {
     console.error('[Klip] cursor position read failed:', err);
     return null;
