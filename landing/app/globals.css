@@ -526,8 +526,8 @@ footer a:hover { color: var(--accent-light); }
   grid-template-columns: repeat(2, 1fr);
   gap: 1px;
   max-width: 1164px;
-  margin: auto;
-  padding: 0 28px 140px;
+  margin: 0 auto 140px;
+  padding: 0 28px;
   border: 1px solid var(--line);
   background: var(--line);
 }
