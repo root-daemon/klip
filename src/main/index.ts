@@ -1,0 +1,997 @@
+import { app, BrowserWindow, Tray, Menu, globalShortcut, screen, ipcMain, shell, nativeImage, dialog, session } from 'electron';
+import path from 'path';
+import { CompanionManager } from './companion-manager';
+import {
+  createPanelWindow,
+  createOverlayWindow,
+  createStreamWindow,
+  overlayDisplayByWebContents,
+} from './windows';
+import { IPC, type StreamVisibility, type StreamWindowBounds, type LocalConnection } from '../shared/types';
+import { AUDIO_IPC } from './services/audio-capture';
+import * as chatHistory from './services/chat-history-store';
+import * as settingsStore from './services/settings-store';
+import { setApiKey, getApiKey, deleteApiKey } from './services/key-store';
+import { validateApiKey, validateStoredApiKey } from './services/key-validation';
+import { OllamaAPI, DEFAULT_OLLAMA_URL } from './services/ollama-api';
+import { initGpuGuard, confirmGpuHealthy } from './services/gpu-guard';
+import { randomUUID } from 'crypto';
+import { registerCloudAccount } from './services/cloud-account';
+import type { ComputerUseState } from './services/computer-use';
+
+// Prevent multiple instances
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+}
+// Klip lives in the tray, so on Windows the natural thing to do when
+// you can't find it is to double-click the shortcut again. Without this
+// handler that second launch just exited and nothing visible happened —
+// which reads as "the app is broken". Surface the panel instead.
+app.on('second-instance', () => {
+  if (!companion) return;
+  if (panelWindow && !panelWindow.isDestroyed()) {
+    if (panelWindow.isMinimized()) panelWindow.restore();
+    panelWindow.show();
+    panelWindow.focus();
+  } else {
+    togglePanel();
+  }
+});
+
+// Must run before the app is ready: the switches it may set only apply
+// pre-ready, and the GPU failure it counts happens during startup, so
+// the listener has to exist before then. Gated on the instance lock so
+// a duplicate launch that's about to quit never touches the counter.
+if (gotLock) {
+  initGpuGuard();
+}
+
+let tray: Tray | null = null;
+let panelWindow: BrowserWindow | null = null;
+let overlayWindows: BrowserWindow[] = [];
+let streamWindow: BrowserWindow | null = null;
+let companion: CompanionManager;
+let isAppQuitting = false;
+let lastVoiceState = 'idle';
+/** Whether a walkthrough is currently playing (steps 1..N animating). */
+let walkthroughActive = false;
+/** webContents.id of the overlay receiving the active walkthrough. */
+let currentWalkthroughTargetWcId: number | null = null;
+/** Perms-poll lifecycle, controlled by panel visibility. */
+let permsTimer: ReturnType<typeof setInterval> | null = null;
+const startPermsPoll = (): void => {
+  if (permsTimer) return;
+  const tick = async (): Promise<void> => {
+    if (!companion) return;
+    const perms = await companion.getPermissions();
+    sendToPanel(IPC.PERMISSION_STATUS, perms);
+  };
+  void tick();
+  permsTimer = setInterval(() => { void tick(); }, 5000);
+};
+const stopPermsPoll = (): void => {
+  if (!permsTimer) return;
+  clearInterval(permsTimer);
+  permsTimer = null;
+};
+
+app.on('before-quit', () => { isAppQuitting = true; });
+
+// ── Helpers ────────────────────────────────────────────────────────────
+
+function createTrayIcon(): Electron.NativeImage {
+  // Resolve the icon relative to the built JS. In dev that's
+  // dist/main/main/ → ../../../assets; in a packaged app the same
+  // path resolves inside the asar bundle since assets/** is shipped.
+  const assetRoot = path.join(__dirname, '../../../assets');
+  const size32 = path.join(assetRoot, 'icons', '32x32.png');
+  const size16 = path.join(assetRoot, 'icons', '16x16.png');
+
+  try {
+    // Windows renders tray icons from a multi-size .ico crisply at any
+    // DPI; a 16px PNG gets upscaled and blurry at 125%/150% scaling.
+    if (process.platform === 'win32') {
+      const ico = nativeImage.createFromPath(path.join(assetRoot, 'icon.ico'));
+      if (!ico.isEmpty()) return ico;
+    }
+
+    const primary = process.platform === 'darwin' ? size32 : size16;
+    const img = nativeImage.createFromPath(primary);
+    if (img.isEmpty()) throw new Error('empty tray icon image');
+
+    // On macOS attach a 2x representation so the tray icon stays
+    // crisp on Retina. On Windows/Linux resize to 16 for the tray.
+    if (process.platform === 'darwin') {
+      const hi = nativeImage.createFromPath(size32);
+      if (!hi.isEmpty()) {
+        img.addRepresentation({ scaleFactor: 2, buffer: hi.toPNG() });
+      }
+      return img.resize({ width: 16, height: 16 });
+    }
+    return img.resize({ width: 16, height: 16 });
+  } catch (err) {
+    console.error('[Klip] tray icon load failed, using fallback:', err);
+    // Generated fallback — cornflower-blue filled circle so the tray
+    // entry is still clickable even if the PNGs are missing.
+    const size = 32;
+    const canvas = Buffer.alloc(size * size * 4);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const cx = size / 2, cy = size / 2, r = size / 2 - 2;
+        const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
+        const i = (y * size + x) * 4;
+        if (dist <= r) {
+          canvas[i] = 100;
+          canvas[i + 1] = 149;
+          canvas[i + 2] = 237;
+          canvas[i + 3] = 255;
+        }
+      }
+    }
+    return nativeImage.createFromBuffer(canvas, { width: size, height: size });
+  }
+}
+
+function sendToPanel(channel: string, ...args: unknown[]): void {
+  if (panelWindow && !panelWindow.isDestroyed()) {
+    panelWindow.webContents.send(channel, ...args);
+  }
+}
+
+function sendToOverlays(channel: string, ...args: unknown[]): void {
+  for (const win of overlayWindows) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(channel, ...args);
+    }
+  }
+}
+
+/**
+ * Pick a single overlay to receive an event. Used for things that must
+ * not duplicate across displays — TTS audio playback being the canonical
+ * case (broadcasting to all overlays plays the buffer once per display
+ * and audibly doubles).
+ */
+function sendToOneOverlay(channel: string, ...args: unknown[]): void {
+  const target = overlayWindows.find((w) => !w.isDestroyed());
+  if (target) target.webContents.send(channel, ...args);
+}
+
+function sendToOverlayById(wcId: number, channel: string, ...args: unknown[]): void {
+  const target = overlayWindows.find((w) => !w.isDestroyed() && w.webContents.id === wcId);
+  if (target) target.webContents.send(channel, ...args);
+}
+
+function findOverlayContainingPoint(pos: { x: number; y: number }): BrowserWindow | undefined {
+  return overlayWindows.find((w) => {
+    if (w.isDestroyed()) return false;
+    const display = overlayDisplayByWebContents.get(w.webContents.id);
+    if (!display) return false;
+    const b = display.bounds;
+    return (
+      pos.x >= b.x && pos.x < b.x + b.width &&
+      pos.y >= b.y && pos.y < b.y + b.height
+    );
+  });
+}
+
+function sendToStream(channel: string, ...args: unknown[]): void {
+  if (streamWindow && !streamWindow.isDestroyed()) {
+    streamWindow.webContents.send(channel, ...args);
+  }
+}
+
+function sendToAll(channel: string, ...args: unknown[]): void {
+  sendToPanel(channel, ...args);
+  sendToOverlays(channel, ...args);
+  sendToStream(channel, ...args);
+}
+
+async function requestComputerActionApproval(state: ComputerUseState): Promise<void> {
+  const proposal = state.proposal;
+  if (!proposal || !companion) return;
+  const action = proposal.action;
+  const detail = [
+    action.description,
+    action.expected ? `Expected result: ${action.expected}` : '',
+    action.type === 'type' ? `Text to type:\n${action.text}` : '',
+  ].filter(Boolean).join('\n\n');
+  const response = await dialog.showMessageBox({
+    type: 'question',
+    buttons: ['Cancel', 'Approve'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    title: 'Approve KLIP action',
+    message: proposal.approvalMessage,
+    detail,
+  });
+  // Reject/approve by id: a stale native dialog cannot affect a newer run.
+  if (response.response === 1) {
+    await companion.approveComputerAction(proposal.id);
+  } else {
+    companion.rejectComputerAction(proposal.id);
+  }
+}
+
+// ── App Lifecycle ──────────────────────────────────────────────────────
+
+app.whenReady().then(() => {
+  confirmGpuHealthy();
+
+  // `desktopCapturer.getSources()` only enumerates screens; it does not
+  // request Screen Recording access on recent macOS releases. Let Apple's
+  // native picker handle a user-initiated getDisplayMedia request instead.
+  // On versions without that picker, the callback rejects and KLIP opens the
+  // Screen Recording settings pane as its fallback.
+  if (process.platform === 'darwin') {
+    session.defaultSession.setDisplayMediaRequestHandler(
+      (_request, callback) => callback({}),
+      { useSystemPicker: true },
+    );
+  }
+
+  // Initialize companion manager
+  companion = new CompanionManager({
+    onVoiceStateChanged: (state) => {
+      lastVoiceState = state;
+      sendToAll(IPC.VOICE_STATE_CHANGED, state);
+      updateStreamForVoiceState(state);
+    },
+    onTranscriptUpdate: (result) => sendToAll(IPC.TRANSCRIPT_UPDATE, result),
+    onAiResponseChunk: (chunk) => {
+      sendToPanel(IPC.AI_RESPONSE_CHUNK, chunk);
+      sendToStream(IPC.AI_RESPONSE_CHUNK, chunk);
+    },
+    onAiResponseComplete: (text) => {
+      sendToPanel(IPC.AI_RESPONSE_COMPLETE, text);
+      sendToStream(IPC.AI_RESPONSE_COMPLETE, text);
+    },
+    onError: (message) => {
+      sendToPanel(IPC.AI_ERROR, message);
+      sendToStream(IPC.AI_ERROR, message);
+    },
+    onActiveSpecialistChanged: (specialist) => {
+      sendToAll(IPC.ACTIVE_SPECIALIST_CHANGED, specialist);
+    },
+    onWalkthrough: (w) => {
+      walkthroughActive = !!w;
+      // The walkthrough plays on exactly one display — the cursor
+      // display at the time of capture. Compute that target overlay
+      // up front and only send WALKTHROUGH / WALKTHROUGH_STEP to it.
+      // The other overlays would have ignored the events anyway via
+      // their `isStepOnThisDisplay` check; skipping the IPC saves
+      // wakeups on idle screens.
+      if (w && w.steps.length > 0) {
+        const first = w.steps[0];
+        const target = findOverlayContainingPoint({ x: first.x, y: first.y });
+        currentWalkthroughTargetWcId = target?.webContents.id ?? null;
+      } else {
+        currentWalkthroughTargetWcId = null;
+      }
+      if (currentWalkthroughTargetWcId !== null) {
+        sendToOverlayById(currentWalkthroughTargetWcId, IPC.WALKTHROUGH, w);
+      } else if (!w) {
+        // On clear with no known target, broadcast so any overlay holding
+        // stale walkthrough state resets cleanly.
+        sendToOverlays(IPC.WALKTHROUGH, w);
+      }
+      sendToStream(IPC.WALKTHROUGH, w);
+      // Keep the stream visible across the walkthrough in 'responses' mode,
+      // even after voice state has returned to idle. When the walkthrough
+      // ends we re-evaluate based on the current voice state.
+      if (w) applyStreamVisibility(companion.getSettings().streamVisibility);
+      else updateStreamForVoiceState(lastVoiceState);
+    },
+    onWalkthroughStep: (i) => {
+      if (currentWalkthroughTargetWcId !== null) {
+        sendToOverlayById(currentWalkthroughTargetWcId, IPC.WALKTHROUGH_STEP, i);
+      }
+      sendToStream(IPC.WALKTHROUGH_STEP, i);
+      // The walkthrough scheduler emits step `null` after the last step
+      // dwell, just before emitting walkthrough(null). Clear the
+      // active flag here too so a status reader doesn't briefly observe
+      // walkthroughActive=true with no current step.
+      if (i === null) walkthroughActive = false;
+    },
+    onTypeFulfilled: (req) => {
+      // Toast goes on a single overlay (cursor display) so the user
+      // sees one notification, not one per monitor.
+      sendToOneOverlay(IPC.TYPE_FULFILLED, req);
+      sendToStream(IPC.TYPE_FULFILLED, req);
+    },
+    onDocumentCreated: (doc) => {
+      sendToOneOverlay(IPC.DOCUMENT_CREATED, doc);
+      sendToPanel(IPC.DOCUMENT_CREATED, doc);
+      sendToStream(IPC.DOCUMENT_CREATED, doc);
+    },
+    onAgentStep: (step) => {
+      sendToOneOverlay(IPC.AGENT_STEP, step);
+      sendToPanel(IPC.AGENT_STEP, step);
+    },
+    onComputerUseState: (state) => {
+      // The overlay receives this too so the companion can visibly travel
+      // to an approved pointer target before the native cursor acts.
+      sendToAll(IPC.COMPUTER_USE_STATE, state);
+      if (state.status === 'awaiting-approval') void requestComputerActionApproval(state);
+    },
+    onSettingsChanged: (s) => sendToPanel(IPC.SETTINGS_CHANGED, s),
+    onMemoryStatsChanged: (stats) => sendToPanel(IPC.MEMORY_STATS, stats),
+    onChatEntryAdded: (entry) => sendToPanel(IPC.CHAT_ENTRY_ADDED, entry),
+    // Mic capture must NEVER fan out across overlays — each overlay
+    // would open its own getUserMedia + AudioContext and stream chunks
+    // back, which on a multi-monitor setup made companion-manager append
+    // the same audio N times into one buffer. Whisper then transcribed
+    // an interleaved mess. Single overlay only.
+    onStartAudioCapture: () => sendToOneOverlay(AUDIO_IPC.START_CAPTURE),
+    onStopAudioCapture: () => sendToOneOverlay(AUDIO_IPC.STOP_CAPTURE),
+    onPushToTalkStopped: () => { pttActive = false; },
+    onPlayAudio: (buf, mimeType) => sendToOneOverlay('play-audio', buf, mimeType),
+    onCursorVisibilityChanged: (enabled) => applyOverlayVisibility(enabled),
+    onStreamVisibilityChanged: (v) => applyStreamVisibility(v),
+  });
+
+  // Create tray
+  tray = new Tray(createTrayIcon());
+  tray.setToolTip('KLIP');
+
+  console.log('[Klip] Tray created, registering click handler...');
+
+  tray.on('click', () => togglePanel());
+  tray.on('double-click', () => togglePanel());
+
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: 'Show Panel', click: () => { console.log('[Klip] Show Panel menu clicked'); togglePanel(); } },
+      { type: 'separator' },
+      { label: 'Quit KLIP', click: () => app.quit() },
+    ]),
+  );
+
+  // Create overlay windows for each display. Topology changes diff
+  // against the existing set so plugging in one new monitor doesn't
+  // tear down and rebuild every overlay (each rebuild has to reload
+  // the renderer bundle from scratch).
+  rebuildOverlays();
+  screen.on('display-added', () => syncOverlaysToDisplays());
+  screen.on('display-removed', () => syncOverlaysToDisplays());
+  // Resolution / DPI / arrangement changes (docking a laptop, changing
+  // scaling in Settings) keep the same display ids but move the bounds.
+  // Without this the overlay stayed at the stale rect, so the blue
+  // cursor pointed at the wrong spot or lived off-screen entirely.
+  screen.on('display-metrics-changed', (_e, display, changed) => {
+    if (!changed.some((c) => c === 'bounds' || c === 'scaleFactor' || c === 'workArea')) return;
+    syncOverlayBounds(display);
+  });
+
+  // Stream window is created lazily — the default `streamVisibility:'off'`
+  // means a fresh-install user used to have an entire Chromium renderer
+  // running in the background just to receive IPC nobody would ever see.
+  applyStreamVisibility(companion.getSettings().streamVisibility);
+
+  // Sync the OS login-item state with our stored preference. Handles
+  // the case where the user disables the login item externally (e.g.
+  // via System Settings) — next launch reconciles the two.
+  // Skipped in dev: unpackaged it would register the bare electron
+  // binary as a startup item.
+  if (app.isPackaged) {
+    try {
+      app.setLoginItemSettings({ openAtLogin: companion.getSettings().launchAtLogin });
+    } catch (err) {
+      console.error('[Klip] initial setLoginItemSettings failed:', err);
+    }
+  }
+
+  // Register global push-to-talk shortcut.
+  //
+  // Two modes, chosen by the `pttMode` setting:
+  //   'hold'   — Windows/Linux only. globalShortcut fires repeatedly on
+  //              OS key-repeat while the accelerator is held; we start on
+  //              the first fire and stop after 250 ms of silence (release).
+  //   'toggle' — first tap starts, second tap stops. Required on macOS,
+  //              where globalShortcut fires exactly once per press and
+  //              Electron exposes no key-up event.
+  //
+  // On macOS we always behave as 'toggle' regardless of the stored setting,
+  // so a user who set 'hold' on another platform doesn't get a stuck mic.
+  const isMac = process.platform === 'darwin';
+  let pttDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let pttActive = false;
+  /** Number of accelerator fires seen during the current hold. */
+  let pttFireCount = 0;
+  let currentShortcut = '';
+  /** Setup's "press your shortcut" check — see IPC.PTT_TEST_START. */
+  let pttTestMode = false;
+
+  // 'hold' timing. The OS doesn't start auto-repeating a held key until
+  // its repeat-delay elapses — on Windows that's 250 ms at the fastest
+  // setting and 1 s at the slowest (default ≈ 500 ms). The old fixed
+  // 250 ms silence window therefore expired *before the first repeat
+  // ever arrived*: recording stopped after a quarter second, a useless
+  // sliver of audio went to Whisper, then the repeat kicked in and
+  // started a brand-new turn — over and over while the key was held.
+  // Give the first repeat a generous window; once repeats are flowing
+  // (~30 Hz) a tight window is plenty.
+  const PTT_HOLD_INITIAL_GRACE_MS = 1100;
+  const PTT_HOLD_REPEAT_GRACE_MS = 250;
+
+  const pttHandler = () => {
+    // Setup verification: prove the binding reaches us without
+    // actually opening the mic.
+    sendToPanel(IPC.PTT_SHORTCUT_FIRED);
+    if (pttTestMode) return;
+
+    const mode = isMac ? 'toggle' : companion.getSettings().pttMode;
+
+    if (mode === 'toggle') {
+      if (!pttActive) {
+        pttActive = true;
+        // If startPushToTalk's underlying transcription provider fails
+        // to initialise, companion silently flips isRecording back to
+        // false. Reconcile the local toggle so the next tap retries
+        // the start path instead of issuing a stop on nothing.
+        void companion.startPushToTalk().then(() => {
+          pttActive = companion.recording;
+        });
+      } else {
+        pttActive = false;
+        void companion.stopPushToTalk().then(() => {
+          pttActive = companion.recording;
+        });
+      }
+      return;
+    }
+
+    // 'hold' mode (Windows/Linux): rely on key-repeat, debounce on silence.
+    if (pttDebounceTimer) {
+      clearTimeout(pttDebounceTimer);
+      pttDebounceTimer = null;
+    }
+    if (!pttActive) {
+      pttActive = true;
+      pttFireCount = 0;
+      void companion.startPushToTalk();
+    }
+    pttFireCount += 1;
+    const grace = pttFireCount === 1 ? PTT_HOLD_INITIAL_GRACE_MS : PTT_HOLD_REPEAT_GRACE_MS;
+    pttDebounceTimer = setTimeout(() => {
+      pttActive = false;
+      pttFireCount = 0;
+      pttDebounceTimer = null;
+      void companion.stopPushToTalk();
+    }, grace);
+  };
+
+  ipcMain.on(IPC.PTT_TEST_START, () => { pttTestMode = true; });
+  ipcMain.on(IPC.PTT_TEST_STOP, () => { pttTestMode = false; });
+  ipcMain.on(IPC.CANCEL_PUSH_TO_TALK, () => {
+    // Keep the global shortcut's toggle bookkeeping in sync with the
+    // companion's local-only cancellation. The next press must start a new
+    // turn, not try to stop the already-cancelled one.
+    pttActive = false;
+    pttFireCount = 0;
+    if (pttDebounceTimer) {
+      clearTimeout(pttDebounceTimer);
+      pttDebounceTimer = null;
+    }
+    companion.cancelPushToTalk();
+  });
+  // A visible fallback for macOS users: Electron's global shortcut API has
+  // no key-up event, so a panel button must be able to finish the same turn
+  // without relying on a second accelerator tap.
+  ipcMain.on(IPC.PUSH_TO_TALK_STOP, () => {
+    pttActive = false;
+    pttFireCount = 0;
+    if (pttDebounceTimer) {
+      clearTimeout(pttDebounceTimer);
+      pttDebounceTimer = null;
+    }
+    void companion.stopPushToTalk();
+  });
+
+  function registerPttShortcut(accelerator: string): boolean {
+    const previous = currentShortcut;
+    try {
+      if (previous) globalShortcut.unregister(previous);
+      const ok = globalShortcut.register(accelerator, pttHandler);
+      if (ok) {
+        currentShortcut = accelerator;
+        return true;
+      }
+    } catch (err) {
+      console.error('[Klip] shortcut register failed:', err);
+    }
+    // Failure path: always try to restore the last-known-good binding so
+    // the user isn't left without any shortcut at all, even when the
+    // failing register call used the same accelerator as before.
+    if (previous) {
+      try {
+        globalShortcut.register(previous, pttHandler);
+        currentShortcut = previous;
+      } catch (err) {
+        console.error('[Klip] shortcut rollback failed:', err);
+        currentShortcut = '';
+      }
+    }
+    return false;
+  }
+
+  registerPttShortcut(companion.getSettings().pushToTalkShortcut);
+  companion.setShortcutReRegister(registerPttShortcut);
+
+  function suspendPttShortcut(): void {
+    if (currentShortcut) {
+      try { globalShortcut.unregister(currentShortcut); } catch { /* no-op */ }
+    }
+  }
+  function resumePttShortcut(): void {
+    const desired = companion.getSettings().pushToTalkShortcut;
+    registerPttShortcut(desired);
+  }
+  ipcMain.on(IPC.SUSPEND_PUSH_TO_TALK_SHORTCUT, () => suspendPttShortcut());
+  ipcMain.on(IPC.RESUME_PUSH_TO_TALK_SHORTCUT, () => resumePttShortcut());
+
+  // ── IPC Handlers ───────────────────────────────────────────────────
+
+  ipcMain.handle(IPC.GET_SETTINGS, () => companion.getSettings());
+  registerCloudAccount(companion, () => panelWindow);
+  ipcMain.handle(IPC.GET_PERMISSIONS, () => companion.getPermissions());
+  ipcMain.handle(IPC.GET_APP_VERSION, () => app.getVersion());
+  ipcMain.handle(IPC.VALIDATE_API_KEY, (_e, name, key: string) => validateApiKey(name, key));
+  ipcMain.handle(IPC.VALIDATE_STORED_API_KEY, (_e, name) => validateStoredApiKey(name));
+
+  // Setup mic check: capture runs, levels flow to the panel, nothing is
+  // transcribed. The overlay owns the mic; relay its telemetry here.
+  ipcMain.on(IPC.MIC_TEST_START, () => companion.startMicTest());
+  ipcMain.on(IPC.MIC_TEST_STOP, () => companion.stopMicTest());
+  ipcMain.on(IPC.MIC_LEVEL, (_e, level: number) => sendToPanel(IPC.MIC_LEVEL, level));
+  ipcMain.on(IPC.MIC_ERROR, (_e, message: string) => {
+    console.error('[Klip] mic capture error from overlay:', message);
+    sendToPanel(IPC.MIC_ERROR, message);
+    sendToPanel(IPC.AI_ERROR, `microphone unavailable — ${message}`);
+  });
+
+  ipcMain.on(IPC.SET_MODEL, (_e, model) => companion.setModel(model));
+  ipcMain.on(IPC.SET_OPENAI_MODEL, (_e, model) => companion.setOpenAIModel(model));
+  ipcMain.on(IPC.SET_GEMINI_MODEL, (_e, model) => companion.setGeminiModel(model));
+  ipcMain.on(IPC.SET_MIND_PROVIDER, (_e, provider) => companion.setMindProvider(provider));
+  ipcMain.on(IPC.SET_REASONING_DEPTH, (_e, depth) => companion.setReasoningDepth(depth));
+  ipcMain.on(IPC.SET_REPLY_TONE, (_e, tone) => companion.setReplyTone(tone));
+  ipcMain.on(IPC.SET_TTS_PROVIDER, (_e, provider) => companion.setTtsProvider(provider));
+  ipcMain.on(IPC.SET_VOICE_ID, (_e, id) => companion.setVoiceId(id));
+  ipcMain.on(IPC.SET_VOICE_SPEED, (_e, speed) => companion.setVoiceSpeed(speed));
+  ipcMain.on(IPC.SET_VOICE_STABILITY, (_e, stab) => companion.setVoiceStability(stab));
+  ipcMain.on(IPC.SET_SARVAM_SPEAKER, (_e, speaker) => companion.setSarvamSpeaker(speaker));
+  ipcMain.on(IPC.SET_SPEAK_REPLIES, (_e, enabled) => companion.setSpeakReplies(enabled));
+  ipcMain.on(IPC.SET_TRANSCRIPTION_PROVIDER, (_e, provider) => companion.setTranscriptionProvider(provider));
+  ipcMain.on(IPC.TOGGLE_CURSOR, (_e, enabled) => companion.toggleCursor(enabled));
+  ipcMain.on(IPC.SET_LAUNCH_AT_LOGIN, (_e, enabled) => companion.setLaunchAtLogin(enabled));
+  ipcMain.on(IPC.SET_PUSH_TO_TALK_SHORTCUT, (_e, accel: string) => companion.setPushToTalkShortcut(accel));
+  ipcMain.on(IPC.SET_PTT_MODE, (_e, mode) => companion.setPttMode(mode));
+  ipcMain.on(IPC.SET_AUTO_TYPE_ENABLED, (_e, enabled: boolean) => companion.setAutoTypeEnabled(enabled));
+  ipcMain.on(IPC.SET_AUTO_CLICK_ENABLED, (_e, enabled: boolean) => companion.setAutoClickEnabled(enabled));
+  ipcMain.on(IPC.SET_COMPUTER_USE_ENABLED, (_e, enabled: boolean) => companion.setComputerUseEnabled(enabled));
+  ipcMain.on(IPC.SET_STREAM_VISIBILITY, (_e, v: StreamVisibility) => companion.setStreamVisibility(v));
+  ipcMain.on(IPC.SET_STREAM_WINDOW_BOUNDS, (_e, b: StreamWindowBounds) => companion.setStreamWindowBounds(b));
+  // (clearStream used to be a needless renderer→main→same-renderer
+  // round trip — the stream's "clear" button now updates its own
+  // state directly, no IPC.)
+  ipcMain.on(IPC.REQUEST_PERMISSION, (_e, kind) => companion.requestPermission(kind));
+  ipcMain.on(IPC.OPEN_EXTERNAL, (_e, url) => shell.openExternal(url));
+  ipcMain.on(IPC.QUIT_APP, () => app.quit());
+  ipcMain.on(IPC.REPLAY_ONBOARDING, () => companion.replayOnboarding());
+  ipcMain.on(IPC.COMPLETE_ONBOARDING, () => companion.completeOnboarding());
+  ipcMain.on(IPC.SET_GROQ_MODEL, (_e, model) => companion.setGroqModel(model));
+  ipcMain.on(IPC.CLEAR_CONTEXT, () => companion.clearContext());
+  ipcMain.handle(IPC.COMPACT_CONTEXT, () => companion.compactContext());
+  ipcMain.on(IPC.PLAY_VOICE_PREVIEW, (_e, voiceId) => { void companion.playVoicePreview(voiceId); });
+  ipcMain.on(IPC.PLAY_SARVAM_VOICE_PREVIEW, (_e, speaker) => { void companion.playSarvamVoicePreview(speaker); });
+  ipcMain.handle(IPC.GET_MEMORY_STATS, () => companion.getMemoryStats());
+  ipcMain.handle(IPC.GET_CHAT_HISTORY, () => companion.getChatHistory());
+  ipcMain.on(IPC.CLEAR_CHAT_HISTORY, () => companion.clearChatHistory());
+
+  // API Key Management
+  ipcMain.on(IPC.SET_API_KEY, (_e, name, value) => companion.setApiKey(name, value));
+  ipcMain.on(IPC.DELETE_API_KEY, (_e, name) => companion.deleteApiKey(name));
+  ipcMain.handle(IPC.GET_API_KEY_STATUS, () => companion.getApiKeyStatus());
+
+  // Local Connection Management
+  const ollamaAPI = new OllamaAPI();
+
+  function emitLocalConnections(): void {
+    const settings = companion.getSettings();
+    sendToPanel(IPC.SETTINGS_CHANGED, settings);
+  }
+
+  ipcMain.handle(IPC.GET_LOCAL_CONNECTIONS, () => {
+    return settingsStore.get('localConnections') ?? [];
+  });
+
+  ipcMain.handle(IPC.ADD_LOCAL_CONNECTION, (_e, conn: Omit<LocalConnection, 'id'>) => {
+    const connections = settingsStore.get('localConnections') ?? [];
+    const newConn: LocalConnection = { ...conn, id: randomUUID() };
+    settingsStore.set('localConnections', [...connections, newConn]);
+    emitLocalConnections();
+    return newConn;
+  });
+
+  ipcMain.handle(IPC.UPDATE_LOCAL_CONNECTION, (_e, id: string, patch: Partial<LocalConnection>) => {
+    const connections = settingsStore.get('localConnections') ?? [];
+    const updated = connections.map((c) => (c.id === id ? { ...c, ...patch, id } : c));
+    settingsStore.set('localConnections', updated);
+    emitLocalConnections();
+  });
+
+  ipcMain.handle(IPC.DELETE_LOCAL_CONNECTION, (_e, id: string) => {
+    const connections = settingsStore.get('localConnections') ?? [];
+    settingsStore.set('localConnections', connections.filter((c) => c.id !== id));
+    try { deleteApiKey(`local_${id}`); } catch { /* key may not exist */ }
+    emitLocalConnections();
+  });
+
+  ipcMain.handle(IPC.TEST_LOCAL_CONNECTION, (_e, url: string, bearerToken?: string) => {
+    return ollamaAPI.testConnection(url, bearerToken);
+  });
+
+  // One-click Ollama pairing: detect the default local instance, pull its
+  // real installed models, and wire up (or update) a connection with no
+  // manual typing — in particular no "Prefix ID", which is only meaningful
+  // for router services (OpenRouter/LiteLLM) and, if a user copies that
+  // convention onto a direct local connection, produces exactly the
+  // "invalid model name" 400 Ollama itself returns for an unknown tag.
+  ipcMain.handle(IPC.QUICK_CONNECT_OLLAMA, async () => {
+    const url = DEFAULT_OLLAMA_URL;
+    const test = await ollamaAPI.testConnection(url);
+    if (!test.ok) {
+      return {
+        ok: false,
+        error:
+          test.error === 'Connection timed out' || /ECONNREFUSED|fetch failed/i.test(test.error ?? '')
+            ? `Couldn't reach Ollama at ${url}. Install it from ollama.com and make sure it's running, then try again.`
+            : `Couldn't reach Ollama: ${test.error ?? 'unknown error'}`,
+      };
+    }
+
+    const models = await ollamaAPI.getModelDetails(url);
+    if (models.length === 0) {
+      return {
+        ok: false,
+        error: 'Ollama is running but has no models installed. Run "ollama pull llama3.2" in a terminal, then try again.',
+      };
+    }
+
+    const modelNames = models.map((m) => m.name);
+    const selected = modelNames[0];
+    const connections = settingsStore.get('localConnections') ?? [];
+    const normalizedUrl = url.replace(/\/$/, '');
+    const existing = connections.find(
+      (c) => c.type === 'local' && c.url.replace(/\/$/, '') === normalizedUrl,
+    );
+
+    let saved: LocalConnection;
+    let nextConnections: LocalConnection[];
+    if (existing) {
+      saved = {
+        ...existing,
+        enabled: true,
+        // Clear a prior bad prefix rather than leave it silently corrupting
+        // whatever model gets selected.
+        prefixId: undefined,
+        activeModelId: existing.activeModelId && modelNames.includes(existing.activeModelId)
+          ? existing.activeModelId
+          : selected,
+      };
+      nextConnections = connections.map((c) => (c.id === existing.id ? saved : c));
+    } else {
+      saved = {
+        id: randomUUID(),
+        type: 'local',
+        label: 'Ollama',
+        url,
+        enabled: true,
+        bearerEnabled: false,
+        prefixId: undefined,
+        modelIds: [],
+        activeModelId: selected,
+        tags: [],
+      };
+      nextConnections = [...connections, saved];
+    }
+    settingsStore.set('localConnections', nextConnections);
+    companion.setMindProvider('ollama');
+    emitLocalConnections();
+
+    return { ok: true, connectionId: saved.id, models: modelNames, selectedModel: saved.activeModelId };
+  });
+
+  ipcMain.handle(IPC.SET_LOCAL_CONNECTION_KEY, (_e, id: string, token: string) => {
+    setApiKey(`local_${id}`, token);
+  });
+
+  ipcMain.handle(IPC.DELETE_LOCAL_CONNECTION_KEY, (_e, id: string) => {
+    try { deleteApiKey(`local_${id}`); } catch { /* key may not exist */ }
+  });
+
+  // Ollama Model Management
+  ipcMain.handle(IPC.GET_OLLAMA_MODELS, (_e, url: string, bearerToken?: string) => {
+    return ollamaAPI.getModelDetails(url, bearerToken);
+  });
+
+  ipcMain.on(IPC.PULL_OLLAMA_MODEL, (event, url: string, modelTag: string, bearerToken?: string) => {
+    const controller = new AbortController();
+    ollamaAPI.pullModel(
+      url,
+      modelTag,
+      bearerToken,
+      (progress) => { event.sender.send(IPC.OLLAMA_PULL_PROGRESS, progress); },
+      controller.signal,
+    ).then(() => {
+      event.sender.send(IPC.OLLAMA_PULL_COMPLETE, { model: modelTag });
+    }).catch((err: Error) => {
+      if (err.name !== 'AbortError') {
+        event.sender.send(IPC.OLLAMA_PULL_ERROR, { error: err.message });
+      }
+    });
+  });
+
+  ipcMain.handle(IPC.DELETE_OLLAMA_MODEL, (_e, url: string, modelName: string, bearerToken?: string) => {
+    return ollamaAPI.deleteModel(url, modelName, bearerToken);
+  });
+
+  ipcMain.handle(IPC.CREATE_OLLAMA_MODEL, (_e, url: string, modelTag: string, modelfileJson: string, bearerToken?: string) => {
+    return ollamaAPI.createModel(url, modelTag, modelfileJson, bearerToken);
+  });
+
+  // Audio capture: relay chunks from overlay renderer to companion
+  ipcMain.on(AUDIO_IPC.AUDIO_CHUNK, (_e, buffer: Buffer | Uint8Array | ArrayBuffer) => {
+    companion.handleAudioChunk(buffer);
+  });
+
+  // Track cursor position for overlay rendering. Three optimisations vs
+  // the naive 60-fps fanout:
+  //   1. Skip the entire poll when "Show cursor" is off.
+  //   2. 30 fps is plenty — the cursor companion has its own 50 ms CSS
+  //      transition, so doubling the rate just doubled the IPC traffic.
+  //   3. Only send to the overlay whose display the cursor is on. When
+  //      the cursor leaves a display we send one "off" pulse to the old
+  //      overlay so its `isCursorOnThisDisplay` state flips false; we
+  //      stop sending updates to it until the cursor re-enters.
+  let lastCursorTargetWcId: number | null = null;
+  setInterval(() => {
+    if (!companion.getSettings().isClickyCursorEnabled) {
+      // If we previously had a target, tell it to clear so a stale
+      // companion cursor doesn't linger on the last screen.
+      if (lastCursorTargetWcId !== null) {
+        sendToOverlayById(lastCursorTargetWcId, IPC.CURSOR_POSITION, { x: -9999, y: -9999, off: true });
+        lastCursorTargetWcId = null;
+      }
+      return;
+    }
+    const pos = screen.getCursorScreenPoint();
+    const targetWin = findOverlayContainingPoint(pos);
+    const targetId = targetWin?.webContents.id ?? null;
+    if (targetId !== lastCursorTargetWcId && lastCursorTargetWcId !== null) {
+      sendToOverlayById(lastCursorTargetWcId, IPC.CURSOR_POSITION, { x: -9999, y: -9999, off: true });
+    }
+    if (targetWin) {
+      targetWin.webContents.send(IPC.CURSOR_POSITION, pos);
+    }
+    lastCursorTargetWcId = targetId;
+  }, 33);
+
+  // Perms poll lifecycle is hoisted to module scope above; togglePanel()
+  // wires it to the panel window's show/hide events on first creation.
+
+  // Open the main window on first launch.
+  togglePanel();
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+  // Drain any pending chat-history writes before exit.
+  chatHistory.flushSync();
+});
+
+// macOS: don't quit when all windows are closed (tray app)
+app.on('window-all-closed', () => {
+  // Don't quit — this is a tray app
+});
+
+// ── Window Management ──────────────────────────────────────────────────
+
+/** When the panel last lost focus — see togglePanel. */
+let panelBlurredAt = 0;
+
+function togglePanel(): void {
+  if (panelWindow && !panelWindow.isDestroyed()) {
+    // On Windows, clicking the tray icon blurs the panel *before* our
+    // click handler runs, so `isFocused()` was always false and the tray
+    // could only ever show the panel, never hide it. Treat a blur in the
+    // last few hundred ms as "was focused when you clicked".
+    const recentlyFocused = Date.now() - panelBlurredAt < 400;
+    if (panelWindow.isVisible() && !panelWindow.isMinimized() && (panelWindow.isFocused() || recentlyFocused)) {
+      panelWindow.hide();
+      return;
+    }
+    if (panelWindow.isMinimized()) panelWindow.restore();
+    panelWindow.show();
+    panelWindow.focus();
+    return;
+  }
+
+  panelWindow = createPanelWindow();
+  panelWindow.on('blur', () => { panelBlurredAt = Date.now(); });
+  panelWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    console.error('[Klip] Panel FAILED to load:', code, desc, url);
+  });
+  panelWindow.on('close', (e) => {
+    // Don't destroy on close — hide so reopening is instant and keeps state.
+    if (!isAppQuitting) {
+      e.preventDefault();
+      panelWindow?.hide();
+    }
+  });
+  // Permissions polling is only useful while the banner can render.
+  panelWindow.on('show', startPermsPoll);
+  panelWindow.on('hide', stopPermsPoll);
+
+  panelWindow.show();
+  panelWindow.focus();
+}
+
+function rebuildOverlays(): void {
+  // Destroy existing overlays
+  for (const win of overlayWindows) {
+    if (!win.isDestroyed()) win.destroy();
+  }
+
+  overlayWindows = screen.getAllDisplays().map((display) => createOverlayWindow(display));
+  // Respect the persisted "Show cursor" setting — if the user has it
+  // turned off, the overlays are created but hidden so we can still
+  // route voice-state / element-detected events into their renderers
+  // without a visible window on screen.
+  applyOverlayVisibility(companion.getSettings().isClickyCursorEnabled);
+}
+
+/**
+ * Reconcile overlay windows with the current display topology. Only
+ * creates overlays for newly-added displays and destroys overlays for
+ * displays that are gone — leaves untouched overlays running so we
+ * don't reload all renderer bundles on every monitor change.
+ */
+function syncOverlaysToDisplays(): void {
+  const currentDisplays = screen.getAllDisplays();
+  const currentIds = new Set(currentDisplays.map((d) => d.id));
+
+  // Drop overlays whose display is gone.
+  const survivors: BrowserWindow[] = [];
+  for (const win of overlayWindows) {
+    const display = overlayDisplayByWebContents.get(win.webContents.id);
+    if (!display || !currentIds.has(display.id) || win.isDestroyed()) {
+      if (!win.isDestroyed()) win.destroy();
+      continue;
+    }
+    survivors.push(win);
+  }
+
+  // Add overlays for newly-attached displays.
+  const survivorDisplayIds = new Set(
+    survivors.map((w) => overlayDisplayByWebContents.get(w.webContents.id)?.id).filter((id): id is number => id !== undefined),
+  );
+  for (const display of currentDisplays) {
+    if (!survivorDisplayIds.has(display.id)) {
+      survivors.push(createOverlayWindow(display));
+    }
+  }
+
+  overlayWindows = survivors;
+  // Respect the persisted "Show cursor" setting — if the user has it
+  // turned off, the overlays are created but hidden so we can still
+  // route voice-state / element-detected events into their renderers
+  // without a visible window on screen.
+  applyOverlayVisibility(companion.getSettings().isClickyCursorEnabled);
+}
+
+/** Move an existing overlay to its display's new bounds after a metrics change. */
+function syncOverlayBounds(display: Electron.Display): void {
+  for (const win of overlayWindows) {
+    if (win.isDestroyed()) continue;
+    const tracked = overlayDisplayByWebContents.get(win.webContents.id);
+    if (!tracked || tracked.id !== display.id) continue;
+    win.setBounds(display.bounds);
+    overlayDisplayByWebContents.set(win.webContents.id, display);
+    win.webContents.send('display-info', {
+      id: display.id,
+      bounds: display.bounds,
+      workArea: display.workArea,
+      scaleFactor: display.scaleFactor,
+      isPrimary: display.id === screen.getPrimaryDisplay().id,
+    });
+  }
+}
+
+function applyOverlayVisibility(enabled: boolean): void {
+  for (const win of overlayWindows) {
+    if (win.isDestroyed()) continue;
+    if (enabled) {
+      win.showInactive();
+    } else {
+      win.hide();
+    }
+  }
+}
+
+/**
+ * Lazily create the stream window. Returns the live BrowserWindow.
+ * The window is destroyed (not hidden) when the user sets visibility
+ * back to 'off', so calling this again will spin up a fresh instance.
+ */
+function ensureStreamWindow(): BrowserWindow {
+  if (streamWindow && !streamWindow.isDestroyed()) return streamWindow;
+  const bounds = companion.getSettings().streamWindowBounds;
+  streamWindow = createStreamWindow(bounds);
+  streamWindow.on('close', (e) => {
+    if (!isAppQuitting) {
+      e.preventDefault();
+      streamWindow?.hide();
+      companion.setStreamVisibility('off');
+    }
+  });
+  streamWindow.on('moved', persistStreamBounds);
+  streamWindow.on('resized', persistStreamBounds);
+  return streamWindow;
+}
+
+function destroyStreamWindow(): void {
+  if (!streamWindow) return;
+  if (!streamWindow.isDestroyed()) {
+    // The 'close' handler intercepts user closes and re-shows + flips the
+    // visibility setting; we want a real teardown here, so destroy directly.
+    streamWindow.destroy();
+  }
+  streamWindow = null;
+}
+
+/**
+ * Show or hide the stream window based on the current visibility
+ * setting. 'responses' mode is refined further by updateStreamForVoiceState
+ * which flicks it on when Klip is thinking / speaking.
+ */
+function applyStreamVisibility(v: StreamVisibility): void {
+  if (v === 'off') {
+    destroyStreamWindow();
+    return;
+  }
+  if (v === 'always') {
+    ensureStreamWindow().showInactive();
+    return;
+  }
+  // 'responses' — reconcile with whatever Klip is currently doing
+  // so switching *into* this mode immediately reflects the real state.
+  // We don't pre-create the window here; updateStreamForVoiceState will
+  // spin it up the first time something happens worth showing.
+  updateStreamForVoiceState(lastVoiceState);
+}
+
+function updateStreamForVoiceState(state: string): void {
+  const v = companion.getSettings().streamVisibility;
+  if (v !== 'responses') return;
+  const active =
+    state === 'listening' ||
+    state === 'processing' ||
+    state === 'responding' ||
+    walkthroughActive;
+  if (active) {
+    ensureStreamWindow().showInactive();
+  } else if (state === 'idle') {
+    if (streamWindow && !streamWindow.isDestroyed()) streamWindow.hide();
+  }
+}
+
+function persistStreamBounds(): void {
+  if (!streamWindow || streamWindow.isDestroyed()) return;
+  const [x, y] = streamWindow.getPosition();
+  const [width, height] = streamWindow.getSize();
+  companion.setStreamWindowBounds({ x, y, width, height });
+}

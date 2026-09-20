@@ -1,0 +1,281 @@
+import { useState } from 'react';
+import type { KlipSettings, MemoryStats } from '../../../shared/types';
+import { ShortcutCapture } from './ShortcutCapture';
+import { CloudAccount } from './CloudAccount';
+
+interface GeneralTabProps {
+  settings: KlipSettings;
+  memory: MemoryStats | null;
+}
+
+function formatTokens(n: number): string {
+  if (n < 1000) return `${n}`;
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
+function formatRelative(ts: number | null): string {
+  if (!ts) return 'never';
+  const sec = Math.floor((Date.now() - ts) / 1000);
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return `${Math.floor(hr / 24)}d ago`;
+}
+
+export function GeneralTab({ settings, memory }: GeneralTabProps) {
+  const [editingShortcut, setEditingShortcut] = useState(false);
+  const [isCompacting, setIsCompacting] = useState(false);
+  const [compactStatus, setCompactStatus] = useState<
+    { kind: 'success' | 'error'; message: string } | null
+  >(null);
+
+  const onCompact = async () => {
+    setIsCompacting(true);
+    setCompactStatus(null);
+    try {
+      const res = await window.klip.compactContext();
+      if (res.ok) {
+        setCompactStatus({ kind: 'success', message: 'Compacted.' });
+      } else {
+        setCompactStatus({ kind: 'error', message: res.error ?? 'Compaction failed.' });
+      }
+    } catch (err) {
+      setCompactStatus({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Compaction failed.',
+      });
+    } finally {
+      setIsCompacting(false);
+      setTimeout(() => setCompactStatus(null), 4000);
+    }
+  };
+
+  const tokens = memory?.tokens ?? 0;
+  const budget = memory?.tokenBudget ?? 250_000;
+  const pct = Math.min(100, (tokens / budget) * 100);
+  const healthLabel = pct < 60 ? 'healthy' : pct < 85 ? 'getting full' : 'near cap';
+  const healthColor =
+    pct < 60 ? 'var(--fl-ok)' : pct < 85 ? 'var(--fl-warn)' : 'var(--fl-danger)';
+
+  const shortcutKeys = settings.pushToTalkShortcut.split('+').filter(Boolean);
+  const isMac = window.klip.platform === 'darwin';
+
+  return (
+    <>
+      <h1 className="main-h1">
+        General<em>.</em>
+      </h1>
+      <p className="main-lead">Shortcuts, memory, and the companion cursor.</p>
+      <CloudAccount />
+
+      <div className="section">
+        <div className="section-title" style={{ marginBottom: 10 }}>Shortcut</div>
+        <div className="row">
+          <div className="row-main">
+            <div className="row-t">Push to talk</div>
+            <div className="row-s">
+              {settings.pttMode === 'toggle'
+                ? 'tap once to start, then pause after speaking to send (tap again to send sooner)'
+                : 'hold to speak, release to send'}
+            </div>
+          </div>
+          {editingShortcut ? (
+            <ShortcutCapture
+              onSave={(accel) => {
+                window.klip.setPushToTalkShortcut(accel);
+                setEditingShortcut(false);
+              }}
+              onCancel={() => setEditingShortcut(false)}
+            />
+          ) : (
+            <div className="shortcut-edit">
+              <div className="keys">
+                {shortcutKeys.map((k, i) => (
+                  <kbd key={`${k}-${i}`}>{k}</kbd>
+                ))}
+              </div>
+              <span className="rec" onClick={() => setEditingShortcut(true)}>edit</span>
+            </div>
+          )}
+        </div>
+        <div className="row">
+          <div className="row-main">
+            <div className="row-t">Trigger style</div>
+            <div className="row-s">
+              {isMac
+                ? 'macOS only supports tap-toggle — Electron can’t see the key release for hold-to-talk.'
+                : 'pick how the shortcut behaves'}
+            </div>
+          </div>
+          <div className="ptt-mode-seg" role="tablist" aria-label="Push-to-talk mode">
+            <button
+              role="tab"
+              aria-selected={settings.pttMode === 'hold'}
+              className={`seg ${settings.pttMode === 'hold' ? 'on' : ''}`}
+              disabled={isMac}
+              title={isMac ? 'Not supported on macOS' : ''}
+              onClick={() => window.klip.setPttMode('hold')}
+            >
+              Hold
+            </button>
+            <button
+              role="tab"
+              aria-selected={settings.pttMode === 'toggle'}
+              className={`seg ${settings.pttMode === 'toggle' ? 'on' : ''}`}
+              onClick={() => window.klip.setPttMode('toggle')}
+            >
+              Toggle
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="section">
+        <div className="section-title">Memory</div>
+        <p className="section-hint" style={{ margin: '6px 0 14px' }}>
+          KLIP auto-compacts older messages into a summary near the {formatTokens(budget)} cap so the
+          conversation can run forever.
+        </p>
+        <div className="context-bar">
+          <div className="context-meta">
+            <span>
+              <b>{formatTokens(tokens)}</b> / {formatTokens(budget)} tokens
+            </span>
+            <span style={{ color: healthColor }}>{healthLabel}</span>
+          </div>
+          <div className="bar"><div className="f" style={{ width: `${pct}%` }} /></div>
+          <div className="context-footer">
+            <span>
+              {memory?.messageCount ?? 0} messages
+              {memory?.summarizedCount ? ` · ${memory.summarizedCount} summarized` : ''}
+            </span>
+            <span>last compact {formatRelative(memory?.lastCompactedAt ?? null)}</span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
+          <button className="btn xs" onClick={onCompact} disabled={isCompacting}>
+            {isCompacting && <span className="spinner-sm" />}
+            {isCompacting ? 'Compacting…' : 'Compact now'}
+          </button>
+          <button
+            className="btn xs subtle"
+            onClick={() => window.klip.clearContext()}
+            disabled={isCompacting}
+          >
+            Clear memory
+          </button>
+          {compactStatus && (
+            <span
+              className={`compact-status ${compactStatus.kind}`}
+              title={compactStatus.message}
+            >
+              {compactStatus.message}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="section">
+        <div className="section-title" style={{ marginBottom: 4 }}>Companion</div>
+        <div className="row">
+          <div className="row-main">
+            <div className="row-t">Show companion</div>
+            <div className="row-s">the KLIP pet and its cursor — hides both when off</div>
+          </div>
+          <button
+            className={`toggle ${settings.isClickyCursorEnabled ? 'on' : ''}`}
+            onClick={() => window.klip.toggleCursor(!settings.isClickyCursorEnabled)}
+            aria-label="Toggle cursor"
+          />
+        </div>
+        <div className="row">
+          <div className="row-main">
+            <div className="row-t">Allow KLIP to type for you</div>
+            <div className="row-s">
+              when off (default), KLIP copies text to your clipboard and you press paste.
+              when on, KLIP types directly into the focused field
+              {isMac && <> — requires <strong>Accessibility</strong> permission on macOS</>}.
+            </div>
+          </div>
+          <button
+            className={`toggle ${settings.autoTypeEnabled ? 'on' : ''}`}
+            onClick={() => window.klip.setAutoTypeEnabled(!settings.autoTypeEnabled)}
+            aria-label="Toggle auto-typing"
+          />
+        </div>
+        <div className="row">
+          <div className="row-main">
+            <div className="row-t">Allow KLIP to click for you</div>
+            <div className="row-s">
+              when off (default), KLIP only points at things — nothing on your machine is
+              actually clicked. when on, KLIP can move the mouse and click for real
+              {isMac && <> — requires <strong>Accessibility</strong> permission on macOS</>}.
+              only turn this on if you're comfortable with that.
+            </div>
+          </div>
+          <button
+            className={`toggle ${settings.autoClickEnabled ? 'on' : ''}`}
+            onClick={() => window.klip.setAutoClickEnabled(!settings.autoClickEnabled)}
+            aria-label="Toggle auto-click"
+          />
+        </div>
+        <div className="row">
+          <div className="row-main">
+            <div className="row-t">Computer use</div>
+            <div className="row-s">
+              use OpenAI’s computer-use agent to inspect the live desktop and operate direct commands.
+              Screenshots go to OpenAI; when you directly ask KLIP to act, its validated action loop
+              moves the cursor and carries out the request automatically
+              {isMac && <> — requires <strong>Screen Recording</strong> and <strong>Accessibility</strong> permission on macOS</>}.
+            </div>
+          </div>
+          <button
+            className={`toggle ${settings.computerUseEnabled ? 'on' : ''}`}
+            onClick={() => window.klip.setComputerUseEnabled(!settings.computerUseEnabled)}
+            aria-label="Toggle computer use"
+          />
+        </div>
+        <div className="row">
+          <div className="row-main">
+            <div className="row-t">Launch at login</div>
+            <div className="row-s">open KLIP when you sign in</div>
+          </div>
+          <button
+            className={`toggle ${settings.launchAtLogin ? 'on' : ''}`}
+            onClick={() => window.klip.setLaunchAtLogin(!settings.launchAtLogin)}
+            aria-label="Toggle launch at login"
+          />
+        </div>
+        <div className="row">
+          <div className="row-main">
+            <div className="row-t">Setup</div>
+            <div className="row-s">re-check permissions, keys, the shortcut and your mic step by step</div>
+          </div>
+          <button className="btn xs" onClick={() => window.klip.replayOnboarding()}>
+            Run setup again
+          </button>
+        </div>
+        <div className="row">
+          <div className="row-main">
+            <div className="row-t">Stream window</div>
+            <div className="row-s">floating transparent panel that shows the live Q/A — scroll, select, copy</div>
+          </div>
+          <div className="seg">
+            {(['off', 'responses', 'always'] as const).map((v) => (
+              <button
+                key={v}
+                className={settings.streamVisibility === v ? 'on' : ''}
+                onClick={() => window.klip.setStreamVisibility(v)}
+              >
+                {v === 'responses' ? 'while replying' : v}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

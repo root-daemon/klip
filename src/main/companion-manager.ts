@@ -1,0 +1,1271 @@
+import { app, systemPreferences, shell, desktopCapturer, clipboard } from 'electron';
+import { parsePreferences, type CloudPreferences } from '../shared/cloud';
+import { ClaudeAPI } from './services/claude-api';
+import { OpenAIAPI } from './services/openai-api';
+import { GeminiAPI } from './services/gemini-api';
+import { OllamaAPI } from './services/ollama-api';
+import { ElevenLabsTTS } from './services/elevenlabs-tts';
+import { SarvamTTS } from './services/sarvam-tts';
+import { createTranscriptionProvider, type TranscriptionProvider } from './services/transcription';
+import { captureAllDisplays } from './services/screen-capture';
+import { parseAllPointTags, parseTypeTags, parseDocumentTags, parseScrollTags, TAG_STRIP_REGEX, stripMarkdownEmphasis } from './services/element-detector';
+import { typeText, clickAt, scroll, isAccessibilityGranted, promptAccessibility } from './services/auto-typer';
+import { createExcel, createPdf, revealDocument } from './services/document-generator';
+import { runComputerUseTask } from './services/computer-use-agent';
+import { ContextManager } from './services/context-manager';
+import { classifyIntent, isComplexDesktopTask, isComputerUseIntent } from './services/intent-router';
+import { ComputerUseController, type ComputerUseState } from './services/computer-use';
+import { ElectronDesktopAdapter } from './services/desktop-adapter';
+import { OpenAIComputerPlanner } from './services/openai-computer';
+import { containsSpeech } from './services/voice-activity';
+import {
+  MAC_SCREEN_RECORDING_SETTINGS_URL,
+  planMacScreenRecordingPermissionRequest,
+} from './services/permission-request';
+import * as settingsStore from './services/settings-store';
+import type { StoredSettings } from './services/settings-store';
+import * as keyStore from './services/key-store';
+import * as chatHistory from './services/chat-history-store';
+import * as analytics from './services/analytics';
+import type {
+  VoiceState,
+  KlipSettings,
+  ClaudeModel,
+  OpenAIModel,
+  GeminiModel,
+  MindProvider,
+  TtsProvider,
+  GroqTranscriptionModel,
+  TranscriptionProviderType,
+  TranscriptionResult,
+  Walkthrough,
+  PttMode,
+  TypeRequest,
+  DocumentCreated,
+  AgentStepEvent,
+  ScreenCapture,
+  ApiKeyName,
+  ReasoningDepth,
+  ReplyTone,
+  MemoryStats,
+  ChatEntry,
+  StreamVisibility,
+  StreamWindowBounds,
+  PermissionStatus,
+  ActiveSpecialist,
+} from '../shared/types';
+
+export interface CompanionCallbacks {
+  onVoiceStateChanged: (state: VoiceState) => void;
+  onTranscriptUpdate: (result: TranscriptionResult) => void;
+  onAiResponseChunk: (chunk: string) => void;
+  onAiResponseComplete: (fullText: string) => void;
+  /**
+   * A turn failed somewhere in mic → transcription → model → TTS.
+   * Previously these only went to the console, which on a packaged
+   * Windows build means nobody ever saw them — the app just went
+   * quiet. Surfaced to the panel / stream so the user learns *why*.
+   */
+  onError: (message: string) => void;
+  /** Which specialist is handling the in-flight turn — see intent-router.ts. */
+  onActiveSpecialistChanged: (specialist: ActiveSpecialist) => void;
+  onWalkthrough: (walkthrough: Walkthrough | null) => void;
+  /** Active step index (0-based) inside the current walkthrough, or null when idle. */
+  onWalkthroughStep: (index: number | null) => void;
+  onTypeFulfilled: (request: TypeRequest) => void;
+  /** A real .xlsx/.pdf file was written to disk from an [EXCEL:...]/[PDF:...] tag. */
+  onDocumentCreated: (doc: DocumentCreated) => void;
+  /** A step in the real multi-step computer-use loop just executed (or
+   *  null when the task ends) — see computer-use-agent.ts. */
+  onAgentStep: (step: AgentStepEvent | null) => void;
+  /** State from the OpenAI desktop tool loop. */
+  onComputerUseState: (state: ComputerUseState) => void;
+  onSettingsChanged: (settings: KlipSettings) => void;
+  onMemoryStatsChanged: (stats: MemoryStats) => void;
+  onChatEntryAdded: (entry: ChatEntry) => void;
+  onStartAudioCapture: () => void;
+  onStopAudioCapture: () => void;
+  /** Keeps the global PTT toggle in sync when speech silence ends a turn. */
+  onPushToTalkStopped: () => void;
+  onPlayAudio: (audioBuffer: Buffer, mimeType: string) => void;
+  onCursorVisibilityChanged: (enabled: boolean) => void;
+  onStreamVisibilityChanged: (v: StreamVisibility) => void;
+}
+
+export class CompanionManager {
+  private callbacks: CompanionCallbacks;
+
+  private claude: ClaudeAPI;
+  private openai: OpenAIAPI;
+  private gemini: GeminiAPI;
+  private ollama: OllamaAPI;
+  private elevenLabsTts: ElevenLabsTTS;
+  private sarvamTts: SarvamTTS;
+  private context: ContextManager;
+  private computerUse: ComputerUseController;
+  private transcriptionProvider: TranscriptionProvider | null = null;
+  private computerUseRequest: { userText: string; settings: StoredSettings; turnId: number } | null = null;
+
+  private voiceState: VoiceState = 'idle';
+  private lastScreenshots: ScreenCapture[] = [];
+  private isRecording = false;
+
+  /** Public read-only view used by main's PTT handler to keep its
+   *  toggle state in sync after a failed start. */
+  get recording(): boolean {
+    return this.isRecording;
+  }
+  private reRegisterShortcut: ((accel: string) => boolean) | null = null;
+  /**
+   * Monotonic turn counter. A new PTT press bumps this; any still-running
+   * LLM callbacks from the previous turn check if their captured id still
+   * matches before they're allowed to mutate shared state.
+   */
+  private turnId = 0;
+  private currentAbort: AbortController | null = null;
+  /** Pending walkthrough step timers, cleared on new turn or end-of-walkthrough. */
+  private walkthroughTimers: ReturnType<typeof setTimeout>[] = [];
+  /**
+   * If startRecording is in flight, other callers (typically a quick-release
+   * stopPushToTalk) await this before deciding whether to stop. Without it,
+   * stop can fire before `isRecording` has been flipped true, bail, and
+   * leave the mic running forever.
+   */
+  private pendingStart: Promise<void> | null = null;
+  /**
+   * Setup's mic check runs capture without a transcription provider.
+   * While true, audio chunks are dropped here; the overlay still emits
+   * level events that the panel visualises.
+   */
+  private micTestActive = false;
+  private speechEndTimer: ReturnType<typeof setTimeout> | null = null;
+  private heardSpeechInTurn = false;
+  /** Send a voice command shortly after its last audible PCM frame. */
+  private static readonly SPEECH_END_SILENCE_MS = 1_200;
+
+  constructor(callbacks: CompanionCallbacks) {
+    this.callbacks = callbacks;
+    this.claude = new ClaudeAPI();
+    this.openai = new OpenAIAPI();
+    this.gemini = new GeminiAPI();
+    this.ollama = new OllamaAPI();
+    this.elevenLabsTts = new ElevenLabsTTS();
+    this.sarvamTts = new SarvamTTS();
+    this.context = new ContextManager();
+    this.computerUse = new ComputerUseController({
+      desktop: new ElectronDesktopAdapter(),
+      // Computer Use has a dedicated OpenAI tool loop, independent of the
+      // conversational model selected in Mind.
+      planner: new OpenAIComputerPlanner({ getApiKey: () => keyStore.getApiKey('openai') ?? undefined }),
+      // A spoken desktop request is direct user authorization to carry out
+      // the bounded tool loop. Keep a short preview so the companion and the
+      // real pointer visibly arrive together before each input action.
+      autoApprove: true,
+      autoApprovalPreviewMs: 450,
+      onStateChange: (state) => this.callbacks.onComputerUseState(state),
+    });
+
+    analytics.initAnalytics('', 'https://us.i.posthog.com');
+    analytics.trackAppOpened();
+  }
+
+  // ── Settings ─────────────────────────────────────────────────────────
+
+  getSettings(): KlipSettings {
+    const stored = settingsStore.getAll();
+    return {
+      ...stored,
+      apiKeyStatus: keyStore.getKeyStatus(),
+      encryptionAvailable: keyStore.isEncryptionAvailable(),
+    };
+  }
+
+  applyCloudPreferences(value: CloudPreferences): void {
+    const preferences = parsePreferences(value);
+    settingsStore.setPreferences(preferences);
+    this.callbacks.onCursorVisibilityChanged(preferences.isClickyCursorEnabled);
+    this.emitSettings();
+  }
+
+  setModel(model: ClaudeModel): void {
+    settingsStore.set('selectedModel', model);
+    this.emitSettings();
+  }
+
+  setOpenAIModel(model: OpenAIModel): void {
+    settingsStore.set('selectedOpenAIModel', model);
+    this.emitSettings();
+  }
+
+  setGeminiModel(model: GeminiModel): void {
+    settingsStore.set('selectedGeminiModel', model);
+    this.emitSettings();
+  }
+
+  setMindProvider(provider: MindProvider): void {
+    settingsStore.set('mindProvider', provider);
+    this.emitSettings();
+  }
+
+  setReasoningDepth(depth: ReasoningDepth): void {
+    settingsStore.set('reasoningDepth', depth);
+    this.emitSettings();
+  }
+
+  setReplyTone(tone: ReplyTone): void {
+    settingsStore.set('replyTone', tone);
+    this.emitSettings();
+  }
+
+  setTtsProvider(provider: TtsProvider): void {
+    settingsStore.set('ttsProvider', provider);
+    this.emitSettings();
+  }
+
+  setVoiceId(id: string): void {
+    settingsStore.set('voiceId', id);
+    this.emitSettings();
+  }
+
+  setVoiceSpeed(speed: number): void {
+    settingsStore.set('voiceSpeed', speed);
+    this.emitSettings();
+  }
+
+  setVoiceStability(stability: number): void {
+    settingsStore.set('voiceStability', stability);
+    this.emitSettings();
+  }
+
+  setSarvamSpeaker(speaker: string): void {
+    settingsStore.set('sarvamSpeaker', speaker);
+    this.emitSettings();
+  }
+
+  setSpeakReplies(enabled: boolean): void {
+    settingsStore.set('speakReplies', enabled);
+    this.emitSettings();
+  }
+
+  setGroqModel(model: GroqTranscriptionModel): void {
+    settingsStore.set('groqTranscriptionModel', model);
+    this.emitSettings();
+  }
+
+  setTranscriptionProvider(provider: TranscriptionProviderType): void {
+    settingsStore.set('transcriptionProvider', provider);
+    this.emitSettings();
+  }
+
+  toggleCursor(enabled: boolean): void {
+    settingsStore.set('isClickyCursorEnabled', enabled);
+    this.callbacks.onCursorVisibilityChanged(enabled);
+    this.emitSettings();
+  }
+
+  setStreamVisibility(v: StreamVisibility): void {
+    settingsStore.set('streamVisibility', v);
+    this.callbacks.onStreamVisibilityChanged(v);
+    this.emitSettings();
+  }
+
+  setStreamWindowBounds(b: StreamWindowBounds): void {
+    settingsStore.set('streamWindowBounds', b);
+    this.emitSettings();
+  }
+
+  setShortcutReRegister(fn: (accel: string) => boolean): void {
+    this.reRegisterShortcut = fn;
+  }
+
+  setPushToTalkShortcut(accelerator: string): void {
+    const previous = settingsStore.get('pushToTalkShortcut');
+    if (!this.reRegisterShortcut) {
+      settingsStore.set('pushToTalkShortcut', accelerator);
+      this.emitSettings();
+      return;
+    }
+    const ok = this.reRegisterShortcut(accelerator);
+    if (ok) {
+      settingsStore.set('pushToTalkShortcut', accelerator);
+    } else {
+      console.warn('[Klip] Failed to register shortcut', accelerator, '— reverting to', previous);
+      this.reRegisterShortcut(previous);
+    }
+    this.emitSettings();
+  }
+
+  setPttMode(mode: PttMode): void {
+    settingsStore.set('pttMode', mode);
+    this.emitSettings();
+  }
+
+  setAutoTypeEnabled(enabled: boolean): void {
+    settingsStore.set('autoTypeEnabled', enabled);
+    // Flipping the toggle on is the right moment to nudge the user
+    // through the macOS Accessibility prompt — they just expressed
+    // intent to grant. No-op on other platforms / when already trusted.
+    if (enabled && !isAccessibilityGranted()) {
+      promptAccessibility();
+    }
+    this.emitSettings();
+  }
+
+  setAutoClickEnabled(enabled: boolean): void {
+    settingsStore.set('autoClickEnabled', enabled);
+    if (enabled && !isAccessibilityGranted()) {
+      promptAccessibility();
+    }
+    this.emitSettings();
+  }
+
+  setComputerUseEnabled(enabled: boolean): void {
+    settingsStore.set('computerUseEnabled', enabled);
+    if (enabled && !isAccessibilityGranted()) promptAccessibility();
+    if (!enabled && this.computerUseRequest) {
+      const state = this.computerUse.cancel();
+      void this.finishComputerUse(state);
+    }
+    this.emitSettings();
+  }
+
+  setLaunchAtLogin(enabled: boolean): void {
+    settingsStore.set('launchAtLogin', enabled);
+    try {
+      app.setLoginItemSettings({ openAtLogin: enabled });
+    } catch (err) {
+      console.error('[Klip] setLoginItemSettings failed:', err);
+    }
+    this.emitSettings();
+  }
+
+  completeOnboarding(): void {
+    settingsStore.set('onboardingComplete', true);
+    this.emitSettings();
+  }
+
+  replayOnboarding(): void {
+    settingsStore.set('onboardingComplete', false);
+    analytics.trackOnboardingReplayed();
+    this.emitSettings();
+  }
+
+  // ── Context / Memory ─────────────────────────────────────────────────
+
+  clearContext(): void {
+    this.context.clear();
+    this.emitMemoryStats();
+  }
+
+  async compactContext(): Promise<{ ok: boolean; error?: string }> {
+    if (!this.context.canCompact()) {
+      return { ok: false, error: 'Need at least two exchanges before compacting.' };
+    }
+    try {
+      await this.context.compact(true);
+      this.emitMemoryStats();
+      return { ok: true };
+    } catch (err) {
+      this.emitMemoryStats();
+      return {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  getMemoryStats(): MemoryStats {
+    return this.context.getStats();
+  }
+
+  // ── Chat history ─────────────────────────────────────────────────────
+
+  getChatHistory(): ChatEntry[] {
+    return chatHistory.getAll();
+  }
+
+  clearChatHistory(): void {
+    chatHistory.clear();
+  }
+
+  // ── API Keys ─────────────────────────────────────────────────────────
+
+  setApiKey(name: ApiKeyName, value: string): void {
+    keyStore.setApiKey(name, value);
+    this.emitSettings();
+  }
+
+  deleteApiKey(name: ApiKeyName): void {
+    keyStore.deleteApiKey(name);
+    this.emitSettings();
+  }
+
+  getApiKeyStatus(): Record<ApiKeyName, boolean> {
+    return keyStore.getKeyStatus();
+  }
+
+  // ── TTS ──────────────────────────────────────────────────────────────
+
+  /** Synthesize with whichever TTS provider is currently active. */
+  private async synthesizeReply(
+    text: string,
+    settings: StoredSettings,
+  ): Promise<{ buffer: Buffer; mimeType: string }> {
+    if (settings.ttsProvider === 'sarvam') {
+      const buffer = await this.sarvamTts.synthesize(text, { speaker: settings.sarvamSpeaker });
+      return { buffer, mimeType: 'audio/wav' };
+    }
+    const buffer = await this.elevenLabsTts.synthesize(text, {
+      voiceId: settings.voiceId,
+      speed: settings.voiceSpeed,
+      stability: settings.voiceStability,
+    });
+    return { buffer, mimeType: 'audio/mpeg' };
+  }
+
+  private hasActiveTtsKey(settings: StoredSettings): boolean {
+    return keyStore.getKeyStatus()[settings.ttsProvider];
+  }
+
+  private ttsProviderLabel(settings: StoredSettings): string {
+    return settings.ttsProvider === 'sarvam' ? 'Sarvam' : 'ElevenLabs';
+  }
+
+  /** "Speak replies" is on but there's no key for the selected TTS provider — this used
+   *  to fail silently (console.error only), so replies never played with no explanation. */
+  private describeMissingTtsKey(settings: StoredSettings): string {
+    return `speak replies is on, but there's no ${this.ttsProviderLabel(settings)} api key set — add one in Voice settings to hear klip talk.`;
+  }
+
+  private describeTtsFailure(settings: StoredSettings, err: unknown): string {
+    const detail = err instanceof Error ? err.message : String(err);
+    return `klip couldn't speak that reply (${this.ttsProviderLabel(settings)}) — ${detail}`;
+  }
+
+  async playVoicePreview(voiceId: string): Promise<void> {
+    try {
+      const buf = await this.elevenLabsTts.synthesize(
+        "hi, i'm klip. i'll be using this voice to talk with you.",
+        {
+          voiceId,
+          speed: settingsStore.get('voiceSpeed'),
+          stability: settingsStore.get('voiceStability'),
+        },
+      );
+      this.callbacks.onPlayAudio(buf, 'audio/mpeg');
+    } catch (err) {
+      console.error('[Klip] voice preview failed:', err);
+    }
+  }
+
+  async playSarvamVoicePreview(speaker: string): Promise<void> {
+    try {
+      const buf = await this.sarvamTts.synthesize(
+        "hi, i'm klip. i'll be using this voice to talk with you.",
+        { speaker },
+      );
+      this.callbacks.onPlayAudio(buf, 'audio/wav');
+    } catch (err) {
+      console.error('[Klip] Sarvam voice preview failed:', err);
+    }
+  }
+
+  // ── Permissions ──────────────────────────────────────────────────────
+
+  async getPermissions(): Promise<PermissionStatus> {
+    const perms: PermissionStatus = {
+      microphone: true,
+      screen: true,
+      accessibility: true,
+      microphoneStatus: 'unknown',
+    };
+    if (process.platform === 'darwin') {
+      const mic = systemPreferences.getMediaAccessStatus('microphone');
+      perms.microphoneStatus = mic;
+      perms.microphone = mic === 'granted';
+      perms.screen = systemPreferences.getMediaAccessStatus('screen') === 'granted';
+      perms.accessibility = isAccessibilityGranted();
+    } else if (process.platform === 'win32') {
+      // Windows 10/11 gate desktop-app microphone access under
+      // Settings → Privacy → Microphone. When it's off, getUserMedia in
+      // the overlay fails and Klip silently hears nothing — the #1
+      // "it doesn't work" report. Electron exposes the same status
+      // query on Windows, so surface it.
+      try {
+        const mic = systemPreferences.getMediaAccessStatus('microphone');
+        perms.microphoneStatus = mic;
+        perms.microphone = mic === 'granted' || mic === 'not-determined';
+      } catch (err) {
+        console.error('[Klip] mic status probe failed:', err);
+      }
+    }
+    return perms;
+  }
+
+  async requestPermission(kind: string): Promise<void> {
+    if (process.platform === 'win32') {
+      if (kind === 'microphone') {
+        // Deeplink straight to the privacy pane; the toggles there are
+        // "Microphone access" and "Let desktop apps access your microphone".
+        void shell.openExternal('ms-settings:privacy-microphone');
+      }
+      return;
+    }
+    if (process.platform !== 'darwin') return;
+
+    if (kind === 'microphone') {
+      const status = systemPreferences.getMediaAccessStatus('microphone');
+      if (status === 'not-determined') {
+        await systemPreferences.askForMediaAccess('microphone');
+      } else if (status === 'denied' || status === 'restricted') {
+        // The OS only shows the prompt once; after denial the user must
+        // re-enable us in System Settings. Deeplink straight to the pane.
+        shell.openExternal(
+          'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
+        );
+      }
+      return;
+    }
+
+    if (kind === 'accessibility') {
+      // Calling with `true` adds Klip to the Accessibility list and
+      // surfaces the OS dialog. The user still has to flip the checkbox
+      // themselves; we deeplink to the right pane in case the dialog
+      // got dismissed.
+      promptAccessibility();
+      shell.openExternal(
+        'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
+      );
+      return;
+    }
+
+    if (kind === 'screen') {
+      const status = systemPreferences.getMediaAccessStatus('screen');
+      const plan = planMacScreenRecordingPermissionRequest(status);
+
+      if (plan.shouldProbeCapture) {
+        // Electron has no askForMediaAccess('screen'). A real capture attempt
+        // makes macOS associate this permission with KLIP before we open the
+        // privacy panel where the user enables it.
+        try {
+          await desktopCapturer.getSources({
+            types: ['screen'],
+            thumbnailSize: { width: 1, height: 1 },
+          });
+        } catch (err) {
+          console.error('[Klip] screen permission probe failed:', err);
+        }
+      }
+
+      if (plan.shouldOpenSettings) {
+        try {
+          await shell.openExternal(MAC_SCREEN_RECORDING_SETTINGS_URL);
+        } catch (err) {
+          console.error('[Klip] could not open Screen Recording settings:', err);
+        }
+      }
+    }
+  }
+
+  // ── Push-to-Talk Pipeline ────────────────────────────────────────────
+
+  async handlePushToTalk(): Promise<void> {
+    if (this.isRecording) await this.stopRecordingAndProcess();
+    else await this.startRecording();
+  }
+
+  async startPushToTalk(): Promise<void> {
+    if (this.isRecording || this.pendingStart) return;
+    const p = this.startRecording();
+    this.pendingStart = p;
+    try {
+      await p;
+    } finally {
+      if (this.pendingStart === p) this.pendingStart = null;
+    }
+  }
+
+  async stopPushToTalk(): Promise<void> {
+    // If a start is still in flight, let it finish so isRecording flips
+    // true before we decide whether to stop. Otherwise a quick press/release
+    // can race past the start and leak a live mic.
+    if (this.pendingStart) {
+      try { await this.pendingStart; } catch { /* surfaced inside startRecording */ }
+    }
+    if (!this.isRecording) return;
+    await this.stopRecordingAndProcess();
+  }
+
+  /**
+   * Stop an in-progress recording without transcribing or sending any audio.
+   * Setup uses this as a recovery path when a toggle shortcut gets stranded
+   * in listening mode (for example after an interrupted second key press).
+   */
+  cancelPushToTalk(): void {
+    // Invalidate an in-flight provider start before it can reopen capture.
+    this.turnId += 1;
+    this.isRecording = false;
+    this.clearSpeechEndTimer();
+    this.heardSpeechInTurn = false;
+    this.transcriptionProvider = null;
+    this.callbacks.onStopAudioCapture();
+    this.callbacks.onPushToTalkStopped();
+    this.setVoiceState('idle');
+  }
+
+  // ── Mic check (setup) ────────────────────────────────────────────────
+
+  startMicTest(): void {
+    if (this.isRecording || this.micTestActive) return;
+    this.micTestActive = true;
+    this.callbacks.onStartAudioCapture();
+  }
+
+  stopMicTest(): void {
+    if (!this.micTestActive) return;
+    this.micTestActive = false;
+    // Don't yank the mic out from under a real PTT turn that started
+    // while the test was running.
+    if (!this.isRecording) this.callbacks.onStopAudioCapture();
+  }
+
+  private clearWalkthroughTimers(): void {
+    for (const t of this.walkthroughTimers) clearTimeout(t);
+    this.walkthroughTimers = [];
+  }
+
+  /**
+   * Schedule a walkthrough so overlay + stream + any other surface stay
+   * in lockstep. Emits the full step list once, then a step index per
+   * step at computed times, then clears with `null` after the last step.
+   *
+   * Per-step dwell scales with caption length so longer instructions
+   * stay on screen long enough to read; floor of 2.6s, ceiling of 5.5s.
+   *
+   * A step with `click: true` also performs a real OS click the instant
+   * its dwell begins — exactly when the pet visually arrives at that
+   * spot, so the click is always telegraphed on screen before it lands.
+   */
+  private startWalkthrough(walkthrough: Walkthrough, isCurrent: () => boolean, autoClickEnabled: boolean): void {
+    this.clearWalkthroughTimers();
+    this.callbacks.onWalkthrough(walkthrough);
+
+    const dwellFor = (label: string): number =>
+      Math.max(2600, Math.min(5500, 1800 + label.length * 80));
+
+    let cursor = 0;
+    walkthrough.steps.forEach((step, i) => {
+      const start = cursor;
+      const t = setTimeout(() => {
+        if (!isCurrent()) return;
+        this.callbacks.onWalkthroughStep(i);
+        if (step.click && autoClickEnabled) {
+          void clickAt(step.x, step.y).then((ok) => {
+            if (!ok) console.warn('[Klip] click requested but auto-click unavailable (permission or native module missing)');
+          });
+        }
+      }, start);
+      this.walkthroughTimers.push(t);
+      cursor += dwellFor(step.label);
+    });
+
+    // After the last step has had its dwell, clear the walkthrough.
+    const endTimer = setTimeout(() => {
+      if (!isCurrent()) return;
+      this.callbacks.onWalkthroughStep(null);
+      this.callbacks.onWalkthrough(null);
+    }, cursor);
+    this.walkthroughTimers.push(endTimer);
+  }
+
+  /**
+   * The real multi-step path (computer-use-agent.ts): Claude drives an
+   * observe → act → observe loop against the actual OS, seeing the
+   * result of each action before deciding the next one. Only reachable
+   * when mindProvider is 'anthropic' and autoClickEnabled is on (see the
+   * call site in stopRecordingAndProcess) — this is a materially bigger
+   * grant of autonomous control than the single-shot tags, so it stays
+   * behind the same explicit opt-in rather than a separate one.
+   */
+  private async runAgenticTask(instruction: string, settings: StoredSettings): Promise<void> {
+    const myTurnId = this.turnId;
+    const abort = new AbortController();
+    this.currentAbort = abort;
+    const isCurrent = () => this.turnId === myTurnId;
+
+    try {
+      const result = await runComputerUseTask(
+        instruction,
+        settings.selectedModel,
+        (step) => {
+          if (!isCurrent()) return;
+          this.callbacks.onAgentStep(step);
+        },
+        abort.signal,
+      );
+      if (!isCurrent()) return;
+
+      this.callbacks.onAiResponseChunk(result.finalText);
+      this.callbacks.onAiResponseComplete(result.finalText);
+      analytics.trackAiResponseReceived(result.finalText);
+
+      await this.context.recordExchange(instruction, result.finalText, {});
+      if (!isCurrent()) return;
+      this.emitMemoryStats();
+
+      const entry = chatHistory.append({ userText: instruction, assistantText: result.finalText });
+      this.callbacks.onChatEntryAdded(entry);
+
+      if (settings.speakReplies) {
+        if (this.hasActiveTtsKey(settings)) {
+          try {
+            const { buffer, mimeType } = await this.synthesizeReply(stripMarkdownEmphasis(result.finalText), settings);
+            if (!isCurrent()) return;
+            this.setVoiceState('responding');
+            this.callbacks.onPlayAudio(buffer, mimeType);
+          } catch (err) {
+            console.error('TTS error on agent task:', err);
+            if (isCurrent()) this.callbacks.onError(this.describeTtsFailure(settings, err));
+          }
+        } else {
+          this.callbacks.onError(this.describeMissingTtsKey(settings));
+        }
+      }
+    } catch (err) {
+      if (!isCurrent()) return;
+      if (err instanceof Error && err.name === 'AbortError') return;
+      console.error('Agent task failed:', err);
+      this.callbacks.onError(err instanceof Error ? err.message : String(err));
+    } finally {
+      // Clear the step indicator unconditionally — even if a newer turn
+      // has superseded this one, a stale "writing"/"reading" HUD from an
+      // aborted task should never linger into the next turn.
+      this.callbacks.onAgentStep(null);
+      if (isCurrent()) {
+        this.setVoiceState('idle');
+        this.callbacks.onActiveSpecialistChanged(null);
+      }
+    }
+  }
+
+  private async startRecording(): Promise<void> {
+    // Bump the turn and abort any in-flight work from the previous one
+    // so the user's new message supersedes whatever Klip was doing.
+    this.turnId += 1;
+    const recordingTurnId = this.turnId;
+    if (this.currentAbort) {
+      this.currentAbort.abort();
+      this.currentAbort = null;
+    }
+    if (this.computerUseRequest) {
+      this.computerUse.cancel();
+      this.computerUseRequest = null;
+    }
+    this.clearWalkthroughTimers();
+    this.callbacks.onWalkthrough(null);
+    this.callbacks.onWalkthroughStep(null);
+
+    this.isRecording = true;
+    this.clearSpeechEndTimer();
+    this.heardSpeechInTurn = false;
+    this.setVoiceState('listening');
+    analytics.trackPushToTalkStarted();
+
+    const provider = settingsStore.get('transcriptionProvider');
+    const transcriptionProvider = createTranscriptionProvider(provider);
+    this.transcriptionProvider = transcriptionProvider;
+
+    transcriptionProvider.onPartialTranscript = (text) => {
+      this.callbacks.onTranscriptUpdate({ text, isFinal: false });
+    };
+
+    try {
+      await transcriptionProvider.start();
+      // A cancellation can land while a provider is initialising. Do not
+      // reopen the microphone or surface a stale error after that cancel.
+      if (
+        this.turnId !== recordingTurnId ||
+        this.transcriptionProvider !== transcriptionProvider ||
+        !this.isRecording
+      ) {
+        return;
+      }
+      // A setup mic check may already hold the capture open; starting
+      // again is harmless (the overlay just re-opens the gate).
+      this.micTestActive = false;
+      this.callbacks.onStartAudioCapture();
+    } catch (err) {
+      if (this.turnId !== recordingTurnId || this.transcriptionProvider !== transcriptionProvider) {
+        return;
+      }
+      console.error('Failed to start transcription:', err);
+      this.setVoiceState('idle');
+      this.isRecording = false;
+      this.transcriptionProvider = null;
+      this.callbacks.onError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  private async stopRecordingAndProcess(): Promise<void> {
+    this.isRecording = false;
+    this.clearSpeechEndTimer();
+    this.heardSpeechInTurn = false;
+    this.callbacks.onStopAudioCapture();
+    this.callbacks.onPushToTalkStopped();
+    analytics.trackPushToTalkReleased();
+
+    if (!this.transcriptionProvider) {
+      this.setVoiceState('idle');
+      return;
+    }
+
+    // Transcription is a network operation for every supported provider.
+    // Leaving the companion in "listening" while that request is in flight
+    // makes a successful second tap look like it was ignored, particularly
+    // on macOS's tap-to-toggle path. The recording has already stopped at
+    // this point, so show the next real phase immediately.
+    this.setVoiceState('processing');
+
+    // A failed upload (bad Groq key, offline, 4xx) used to throw straight
+    // out of here — nothing caught it, so the voice state stayed stuck on
+    // 'listening' and the next PTT press did nothing. Contain it.
+    let result: TranscriptionResult;
+    try {
+      result = await this.transcriptionProvider.stop();
+    } catch (err) {
+      console.error('Transcription failed:', err);
+      this.transcriptionProvider = null;
+      this.setVoiceState('idle');
+      this.callbacks.onError(
+        `couldn't transcribe that — ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+    this.transcriptionProvider = null;
+
+    if (!result.text.trim()) {
+      this.setVoiceState('idle');
+      return;
+    }
+
+    this.callbacks.onTranscriptUpdate(result);
+    analytics.trackUserMessageSent(result.text);
+
+    const settings = settingsStore.getAll();
+    const specialist = classifyIntent(result.text);
+    this.callbacks.onActiveSpecialistChanged(specialist);
+    this.setVoiceState('processing');
+    // Genuinely multi-step desktop tasks ("check my mail and reply to
+    // the latest message") need to see the result of each action before
+    // deciding the next one — the [POINT:...]/[CLICK:...] tags below are
+    // blind (one screenshot, every action guessed up front). Hand those
+    // off to the real agentic loop instead, when it's actually available.
+    if (isComplexDesktopTask(result.text)) {
+      if (settings.mindProvider === 'anthropic' && settings.autoClickEnabled) {
+        await this.runAgenticTask(result.text, settings);
+        return;
+      }
+      // Looks like it wants the full loop but can't get it — say so, then
+      // fall through to the best-effort single-shot path below rather
+      // than doing nothing.
+      this.callbacks.onError(
+        settings.mindProvider !== 'anthropic'
+          ? 'that sounds like a multi-step task — switch Mind to Claude and turn on auto-click in General for klip to actually do it step by step. answering with a single best guess for now.'
+          : "that sounds like a multi-step task — turn on 'allow klip to click for you' in General to let it actually do it step by step. answering with a single best guess for now.",
+      );
+    }
+
+    // The OpenAI computer tool is the general desktop executor. It also
+    // remains available when the conversational Mind provider is Claude,
+    // Gemini, or local, because it owns a dedicated OpenAI session.
+    if (settings.computerUseEnabled && isComputerUseIntent(result.text)) {
+      await this.startComputerUse(result.text, settings);
+      return;
+    }
+    try {
+      this.lastScreenshots = await captureAllDisplays();
+    } catch (err) {
+      console.error('Screen capture failed:', err);
+      this.lastScreenshots = [];
+    }
+    if (this.lastScreenshots.length === 0) {
+      // Almost always means Screen Recording permission is missing on
+      // macOS — desktopCapturer returns empty thumbnails in that case.
+      // Surface a friendly response instead of letting an empty image
+      // 400 the upstream LLM call. Synthesize TTS too so the user
+      // hears the error even if their attention is on a different
+      // window than the panel.
+      const settings = settingsStore.getAll();
+      const msg = process.platform === 'darwin'
+        ? "i can't see your screen right now — give klip screen recording permission in system settings, then quit and reopen the app."
+        : "i can't see your screen right now — screen capture failed.";
+      this.callbacks.onAiResponseChunk(msg);
+      this.callbacks.onAiResponseComplete(msg);
+      if (settings.speakReplies) {
+        if (this.hasActiveTtsKey(settings)) {
+          this.setVoiceState('responding');
+          try {
+            const { buffer, mimeType } = await this.synthesizeReply(msg, settings);
+            this.callbacks.onPlayAudio(buffer, mimeType);
+          } catch (err) {
+            console.error('TTS error on screen-capture failure path:', err);
+            this.callbacks.onError(this.describeTtsFailure(settings, err));
+          }
+        } else {
+          this.callbacks.onError(this.describeMissingTtsKey(settings));
+        }
+      }
+      this.setVoiceState('idle');
+      this.callbacks.onActiveSpecialistChanged(null);
+      return;
+    }
+
+    const myTurnId = this.turnId;
+    const abort = new AbortController();
+    this.currentAbort = abort;
+    // Stay in 'processing' until TTS audio is ready to play (or the
+    // reply completes without TTS). The UI shows its spinner during
+    // this state, so this keeps the spinner visible for the full
+    // think + stream + synthesize span instead of flashing for a
+    // few ms during screenshot capture only.
+
+    // Every side effect below is gated on the turn id. If the user has
+    // already started a new PTT by the time an async callback resolves,
+    // we drop the callback on the floor — no stale UI mutations, no
+    // stale chat entries, no TTS we'd have to kill on arrival.
+    const isCurrent = () => this.turnId === myTurnId;
+
+    const mindCallbacks = {
+      onChunk: (chunk: string) => {
+        if (!isCurrent()) return;
+        this.callbacks.onAiResponseChunk(chunk);
+      },
+      onComplete: async (
+        fullText: string,
+        usage?: { inputTokens: number; outputTokens: number },
+      ) => {
+        if (!isCurrent()) return;
+        analytics.trackAiResponseReceived(fullText);
+
+        const cleanText = fullText.replace(TAG_STRIP_REGEX, '').trim();
+        this.callbacks.onAiResponseComplete(cleanText);
+
+        await this.context.recordExchange(result.text, cleanText, {
+          inputTokens: usage?.inputTokens,
+          outputTokens: usage?.outputTokens,
+        });
+        if (!isCurrent()) return;
+        this.emitMemoryStats();
+
+        const entry = chatHistory.append({
+          userText: result.text,
+          assistantText: cleanText,
+        });
+        this.callbacks.onChatEntryAdded(entry);
+
+        const walkthrough = parseAllPointTags(fullText, this.lastScreenshots);
+        if (walkthrough) {
+          console.log(
+            `[Klip] Walkthrough: ${walkthrough.steps.length} step(s) →`,
+            walkthrough.steps.map((s) => `${s.step}/${s.total}${s.click ? ' [click]' : ''} "${s.label}"`).join(', '),
+          );
+          this.startWalkthrough(walkthrough, isCurrent, settings.autoClickEnabled);
+          analytics.trackElementPointed(
+            walkthrough.steps.length > 1
+              ? `${walkthrough.steps[0].label} (+${walkthrough.steps.length - 1} more)`
+              : walkthrough.steps[0].label,
+          );
+          // Klip asked to click something but the user hasn't opted in —
+          // say so once instead of silently only pointing, so "nothing
+          // happened" has a visible reason (same principle as the TTS
+          // fix above).
+          if (!settings.autoClickEnabled && walkthrough.steps.some((s) => s.click)) {
+            this.callbacks.onError(
+              "klip wanted to click something, but auto-click is off — turn it on in General to let it actually click.",
+            );
+          }
+        }
+
+        // [SCROLL:...] tags — executed immediately at wherever the OS
+        // cursor currently is (typically right where a preceding click
+        // just landed it). Same opt-in gate as clicking.
+        const scrollRequests = parseScrollTags(fullText);
+        if (scrollRequests.length > 0 && !settings.autoClickEnabled) {
+          this.callbacks.onError(
+            "klip wanted to scroll, but auto-click is off — turn it on in General to let it control the mouse.",
+          );
+        } else {
+          for (const req of scrollRequests) {
+            void scroll(req.direction, req.amount);
+          }
+        }
+
+        // [TYPE:...] tags. If the user has opted into auto-typing AND
+        // the OS permission is in place, we send the keys directly via
+        // the native typer; otherwise we fall back to clipboard handoff.
+        // typeText() returns false on any failure so the user is never
+        // left with no way to act on the request.
+        const typeTexts = parseTypeTags(fullText);
+        for (const text of typeTexts) {
+          if (!text) continue;
+          const preview = text.length > 50 ? `${text.slice(0, 50)}…` : text;
+          let autoTyped = false;
+          if (settings.autoTypeEnabled) {
+            autoTyped = await typeText(text);
+          }
+          if (!autoTyped) {
+            clipboard.writeText(text);
+          }
+          console.log(
+            `[Klip] Type request → ${autoTyped ? 'auto-typed' : 'clipboard'}: "${preview}"`,
+          );
+          this.callbacks.onTypeFulfilled({ text, preview, autoTyped });
+        }
+
+        // [EXCEL:...] / [PDF:...] tags — the model asked for a real file.
+        // Written to disk immediately and opened with the OS default
+        // app so the user sees the finished document without hunting
+        // for it.
+        const documentRequests = parseDocumentTags(fullText);
+        for (const req of documentRequests) {
+          try {
+            const doc = req.kind === 'excel'
+              ? await createExcel(req.filename, req.body)
+              : await createPdf(req.filename, req.body);
+            console.log(`[Klip] Created ${req.kind} → ${doc.path}`);
+            this.callbacks.onDocumentCreated({ kind: req.kind, filename: doc.filename, path: doc.path });
+            void revealDocument(doc.path);
+          } catch (err) {
+            console.error(`[Klip] Failed to create ${req.kind}:`, err);
+            if (isCurrent()) {
+              this.callbacks.onError(
+                `couldn't create that ${req.kind === 'excel' ? 'spreadsheet' : 'pdf'} — ${err instanceof Error ? err.message : String(err)}`,
+              );
+            }
+          }
+        }
+
+        if (settings.speakReplies) {
+          if (this.hasActiveTtsKey(settings)) {
+            try {
+              const { buffer, mimeType } = await this.synthesizeReply(stripMarkdownEmphasis(cleanText), settings);
+              // User may have started a new turn while TTS was synthesizing;
+              // don't play an answer they no longer want to hear.
+              if (!isCurrent()) return;
+              this.setVoiceState('responding');
+              this.callbacks.onPlayAudio(buffer, mimeType);
+            } catch (err) {
+              console.error('TTS error:', err);
+              analytics.trackTtsError(String(err));
+              if (isCurrent()) this.callbacks.onError(this.describeTtsFailure(settings, err));
+            }
+          } else {
+            this.callbacks.onError(this.describeMissingTtsKey(settings));
+          }
+        }
+
+        if (!isCurrent()) return;
+        this.setVoiceState('idle');
+        this.callbacks.onActiveSpecialistChanged(null);
+      },
+      onError: (err: Error) => {
+        if (!isCurrent()) return;
+        console.error('Mind provider error:', err);
+        analytics.trackResponseError(err.message);
+        this.setVoiceState('idle');
+        this.callbacks.onActiveSpecialistChanged(null);
+        this.callbacks.onError(err.message);
+      },
+    };
+
+    const mindOptions = {
+      reasoningDepth: settings.reasoningDepth,
+      replyTone: settings.replyTone,
+      specialist,
+      signal: abort.signal,
+    };
+
+    if (settings.mindProvider === 'openai') {
+      await this.openai.streamChat(
+        result.text,
+        this.lastScreenshots,
+        this.context.getMessagesForSend(),
+        settings.selectedOpenAIModel,
+        mindOptions,
+        mindCallbacks,
+      );
+    } else if (settings.mindProvider === 'gemini') {
+      await this.gemini.streamChat(
+        result.text,
+        this.lastScreenshots,
+        this.context.getMessagesForSend(),
+        settings.selectedGeminiModel,
+        mindOptions,
+        mindCallbacks,
+      );
+    } else if (settings.mindProvider === 'ollama') {
+      const connections = (settings.localConnections ?? []).filter((c) => c.enabled);
+      const conn = connections[0];
+      if (!conn) {
+        mindCallbacks.onError(new Error('No enabled local connection. Add one in Mind → Local.'));
+        return;
+      }
+      const bearerToken = keyStore.getApiKey(`local_${conn.id}`) ?? undefined;
+      let model: string | undefined;
+      if (conn.activeModelId) {
+        model = conn.activeModelId;
+      } else if (conn.modelIds.length > 0) {
+        model = conn.modelIds[0];
+      } else {
+        const discovered = await this.ollama.getModels(conn.url, bearerToken);
+        model = discovered[0];
+      }
+      if (!model) {
+        // Guessing a model name (the old behavior hardcoded 'llama3',
+        // which rarely matches what's actually installed) just trades
+        // one confusing error for another. Say plainly what to do.
+        mindCallbacks.onError(new Error(
+          'No model selected for this connection. Open Mind → Local → Manage and pick an installed model.',
+        ));
+        return;
+      }
+      // `prefixId` is for router services (OpenRouter/LiteLLM) that need a
+      // provider namespace prepended — never for a direct local connection,
+      // where it just corrupts an otherwise-valid model name.
+      const fullModelId = conn.type === 'local' || !conn.prefixId ? model : `${conn.prefixId}${model}`;
+      await this.ollama.streamChat(
+        result.text,
+        this.lastScreenshots,
+        this.context.getMessagesForSend(),
+        fullModelId,
+        { replyTone: mindOptions.replyTone, specialist: mindOptions.specialist, signal: mindOptions.signal },
+        mindCallbacks,
+        conn.url,
+        bearerToken,
+      );
+    } else {
+      await this.claude.streamChat(
+        result.text,
+        this.lastScreenshots,
+        this.context.getMessagesForSend(),
+        settings.selectedModel,
+        mindOptions,
+        mindCallbacks,
+      );
+    }
+
+    if (this.currentAbort === abort) this.currentAbort = null;
+  }
+
+  /** Called by the native approval dialog with the exact proposal it displayed. */
+  async approveComputerAction(proposalId: string): Promise<void> {
+    if (this.computerUse.getState().proposal?.id !== proposalId) return;
+    const state = await this.computerUse.approve(proposalId);
+    await this.finishComputerUse(state);
+  }
+
+  rejectComputerAction(proposalId: string): void {
+    if (this.computerUse.getState().proposal?.id !== proposalId) return;
+    const state = this.computerUse.reject(proposalId);
+    void this.finishComputerUse(state);
+  }
+
+  private async startComputerUse(userText: string, settings: StoredSettings): Promise<void> {
+    this.computerUseRequest = { userText, settings, turnId: this.turnId };
+    const state = await this.computerUse.start(userText);
+    await this.finishComputerUse(state);
+  }
+
+  /**
+   * ComputerUseController emits intermediate planning / approval states. Only
+   * terminal states settle the voice turn, preserving its familiar chat/TTS
+   * outcome while the controller owns the observe-act-verify loop.
+   */
+  private async finishComputerUse(state: ComputerUseState): Promise<void> {
+    if (state.status === 'planning' || state.status === 'awaiting-approval' || state.status === 'executing') return;
+    const request = this.computerUseRequest;
+    if (!request) return;
+    this.computerUseRequest = null;
+    if (request.turnId !== this.turnId) return;
+
+    if (state.status === 'completed') {
+      const summary = state.summary || 'Done.';
+      analytics.trackAiResponseReceived(summary);
+      this.callbacks.onAiResponseComplete(summary);
+      await this.context.recordExchange(request.userText, summary);
+      if (request.turnId !== this.turnId) return;
+      this.emitMemoryStats();
+      const entry = chatHistory.append({ userText: request.userText, assistantText: summary });
+      this.callbacks.onChatEntryAdded(entry);
+      if (request.settings.speakReplies && this.hasActiveTtsKey(request.settings)) {
+        try {
+          const { buffer, mimeType } = await this.synthesizeReply(summary, request.settings);
+          if (request.turnId !== this.turnId) return;
+          this.setVoiceState('responding');
+          this.callbacks.onPlayAudio(buffer, mimeType);
+        } catch (err) {
+          console.error('Computer-use TTS error:', err);
+        }
+      }
+    } else if (state.status === 'cancelled') {
+      // The live stream has already created a turn from the final transcript.
+      // Complete it even when the user declines the first approval card.
+      this.callbacks.onAiResponseComplete('Computer use cancelled.');
+    } else {
+      const message = state.error ?? 'Computer use could not continue.';
+      this.callbacks.onAiResponseComplete(message);
+      this.callbacks.onError(message);
+    }
+
+    if (request.turnId === this.turnId) {
+      this.setVoiceState('idle');
+      this.callbacks.onActiveSpecialistChanged(null);
+    }
+  }
+
+  handleAudioChunk(buffer: Buffer | Uint8Array | ArrayBuffer): void {
+    if (!this.isRecording) return;
+    // Electron IPC structured-clones a renderer Buffer as Uint8Array on
+    // macOS. Normalize at the process boundary so both transcription and
+    // local voice-activity detection always receive the Node Buffer API.
+    const pcm = Buffer.isBuffer(buffer)
+      ? buffer
+      : buffer instanceof ArrayBuffer
+        ? Buffer.from(buffer)
+        : Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    this.transcriptionProvider?.sendAudio(pcm);
+    if (!containsSpeech(pcm)) return;
+
+    this.heardSpeechInTurn = true;
+    this.clearSpeechEndTimer();
+    this.speechEndTimer = setTimeout(() => {
+      this.speechEndTimer = null;
+      if (!this.isRecording || !this.heardSpeechInTurn) return;
+      // macOS globalShortcut has no key-up event. Ending a voice turn from
+      // actual silence means a one-tap command cannot remain stuck in
+      // Listening just because the second accelerator press was missed.
+      void this.stopPushToTalk();
+    }, CompanionManager.SPEECH_END_SILENCE_MS);
+  }
+
+  private clearSpeechEndTimer(): void {
+    if (!this.speechEndTimer) return;
+    clearTimeout(this.speechEndTimer);
+    this.speechEndTimer = null;
+  }
+
+  // ── Internal ─────────────────────────────────────────────────────────
+
+  private setVoiceState(state: VoiceState): void {
+    this.voiceState = state;
+    this.callbacks.onVoiceStateChanged(state);
+  }
+
+  private emitSettings(): void {
+    this.callbacks.onSettingsChanged(this.getSettings());
+  }
+
+  private emitMemoryStats(): void {
+    this.callbacks.onMemoryStatsChanged(this.context.getStats());
+  }
+}

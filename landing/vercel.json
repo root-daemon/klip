@@ -1,0 +1,3 @@
+{
+  "ignoreCommand": "git diff HEAD^ HEAD --name-only | grep -q '^landing/' && exit 1 || exit 0"
+}

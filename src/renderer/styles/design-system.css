@@ -1,0 +1,113 @@
+/* ── KLIP Design System ───────────────────────────────────────────────
+ * Rig.ai-inspired: near-black grained surfaces, one saturated red-orange
+ * accent, bold geometric display type, monospace uppercase labels.
+ * ──────────────────────────────────────────────────────────────────── */
+
+:root {
+  /* ── Background layers (darkest → lightest) ─────────────────────── */
+  --bg-deepest:  #060606;
+  --bg-base:     #0a0a0a;
+  --bg-raised:   #111112;
+  --bg-elevated: #17171a;
+  --bg-surface:  #1e1e22;
+
+  /* ── Borders ────────────────────────────────────────────────────── */
+  --border-subtle: #26262a;
+  --border-strong: #38383e;
+
+  /* ── Text ───────────────────────────────────────────────────────── */
+  --text-primary:   #f0ede6;
+  --text-secondary: #a5a29c;
+  --text-tertiary:  #6a6862;
+
+  /* ── Accent — a single saturated red-orange, used everywhere instead
+     of a competing brand pair ───────────────────────────────────── */
+  --accent:       #ed462d;
+  --accent-hover: #ff5c3d;
+  --accent-muted: rgba(237, 70, 45, 0.16);
+
+  /* ── Kept as compatibility aliases for older references — both now
+     resolve to the single accent family (a lighter tint for the
+     second one) rather than a separate hue. ───────────────────────── */
+  --accent-yellow: var(--accent-hover);
+  --accent-orange: var(--accent);
+
+  /* ── Blue scale (kept as a neutral "info" scale, independent of brand accent) ── */
+  --blue-50:  #eff6ff;
+  --blue-100: #dbeafe;
+  --blue-200: #bfdbfe;
+  --blue-300: #93c5fd;
+  --blue-400: #60a5fa;
+  --blue-500: #3b82f6;
+  --blue-600: #2563eb;
+  --blue-700: #1d4ed8;
+  --blue-800: #1e40af;
+  --blue-900: #1e3a8a;
+  --blue-950: #172554;
+
+  /* ── Semantic ───────────────────────────────────────────────────── */
+  --success:     #34d399;
+  --warning:     #ffb224;
+  --destructive: #ff5c5c;
+
+  /* ── Pet (overlay companion) ──────────────────────────────────────
+   * --cursor-blue is kept as a compatibility alias — some older styles
+   * may still reference it. New styles should use --pet-glow directly. */
+  --pet-body:      #141415;
+  --pet-body-hi:   #2c2c30;
+  --pet-glow:      #ed462d;
+  --pet-glow-soft: rgba(237, 70, 45, 0.35);
+  --cursor-blue:   var(--pet-glow);
+  /* The "desktop" specialist's identity (see intent-router.ts) — a
+     turn resolving/pointing at something on screen gets a lighter tint
+     of the same accent family instead of a different hue, so the two
+     specialists still read as one coherent single-accent system. */
+  --pet-glow-desktop:      #ff7a4d;
+  --pet-glow-desktop-soft: rgba(255, 122, 77, 0.38);
+
+  /* ── Radius ─────────────────────────────────────────────────────── */
+  --radius-sm:  8px;
+  --radius-md:  12px;
+  --radius-lg:  16px;
+  --radius-xl:  22px;
+
+  /* ── Spacing ────────────────────────────────────────────────────── */
+  --space-xs:   4px;
+  --space-sm:   8px;
+  --space-md:   12px;
+  --space-lg:   16px;
+  --space-xl:   20px;
+  --space-2xl:  24px;
+  --space-3xl:  32px;
+
+  /* ── Typography ─────────────────────────────────────────────────── */
+  --font-sans: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  --font-mono: 'Cascadia Code', 'SF Mono', 'Fira Code', monospace;
+  /* Bold geometric display face for hero headlines — the free stand-in
+     for the kind of heavy, wide grotesk this visual language calls for. */
+  --font-display: 'Unbounded', 'Geist', var(--font-sans);
+  /* Uppercase tracked overline labels, badges, and nav — a squared-off
+     monospace instead of the body sans, for that instrumentation-panel
+     read. */
+  --font-label: 'Chivo Mono', 'Geist Mono', var(--font-mono);
+}
+
+/* ── Reset ──────────────────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: transparent;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+  overflow: hidden;
+}

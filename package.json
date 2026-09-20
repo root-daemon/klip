@@ -1,0 +1,124 @@
+{
+  "name": "klip",
+  "version": "1.2.1",
+  "description": "KLIP — a voice-driven, screen-aware desktop companion with a living pet character, Gemini reasoning, and ElevenLabs/Sarvam voice",
+  "main": "dist/main/main/index.js",
+  "author": {
+    "name": "Klip Contributors",
+    "email": "noreply@klip.app"
+  },
+  "license": "MIT",
+  "scripts": {
+    "dev": "concurrently \"bun run dev:main\" \"bun run dev:renderer\"",
+    "dev:main": "tsc -p tsconfig.main.json --watch",
+    "dev:renderer": "vite dev",
+    "build": "bun run build:main && bun run build:renderer",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "vite build",
+    "start": "cross-env VITE_DEV_SERVER=1 electron dist/main/main/index.js",
+    "start:prod": "electron dist/main/main/index.js",
+    "lint": "eslint src --ext .ts,.tsx",
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "package": "bun run build && electron-builder",
+    "package:win": "bun run build && electron-builder --win",
+    "package:mac": "bun run build && electron-builder --mac",
+    "package:linux": "bun run build && electron-builder --linux",
+    "postinstall": "electron-builder install-app-deps",
+    "test": "bun test tests backend/tests"
+  },
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.6",
+    "exceljs": "^4.4.0",
+    "framer-motion": "^11.18.2",
+    "pdfkit": "^0.20.2",
+    "posthog-node": "^4.0.0"
+  },
+  "devDependencies": {
+    "@electron/notarize": "^2.5.0",
+    "@types/bun": "^1.4.2",
+    "@types/pdfkit": "^0.17.6",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "concurrently": "^9.0.0",
+    "cross-env": "^10.1.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "eslint": "^9.0.0",
+    "png2icons": "^2.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vite-plugin-electron": "^0.28.0"
+  },
+  "build": {
+    "appId": "com.klip.app",
+    "productName": "KLIP",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "assets/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "notarize": true,
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "KLIP needs microphone access for voice commands.",
+        "NSScreenCaptureUsageDescription": "KLIP captures your screen to provide context-aware AI assistance."
+      }
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "linux": {
+      "icon": "assets/icons",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility"
+    }
+  }
+}

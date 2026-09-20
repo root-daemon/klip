@@ -1,0 +1,76 @@
+/* ── Shared waveform component ────────────────────────────────────── */
+
+.wf {
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  justify-content: center;
+  height: var(--wf-height, 42px);
+}
+
+.wf-bar {
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffffff, #8a8a92);
+}
+
+/* Pseudo-randomized resting heights, as an 8-value cycle rather than a
+   fixed list of nth-child rules — covers any bar count (Home renders
+   23; the panel/overlay use fewer) instead of silently going flat
+   past whatever number the list happened to be written up to. */
+.wf-bar:nth-child(8n+1) { height: 30%; }
+.wf-bar:nth-child(8n+2) { height: 85%; }
+.wf-bar:nth-child(8n+3) { height: 48%; }
+.wf-bar:nth-child(8n+4) { height: 72%; }
+.wf-bar:nth-child(8n+5) { height: 38%; }
+.wf-bar:nth-child(8n+6) { height: 90%; }
+.wf-bar:nth-child(8n+7) { height: 55%; }
+.wf-bar:nth-child(8n+8) { height: 65%; }
+
+.wf-active .wf-bar {
+  animation: wf-pulse 1.2s ease-in-out infinite;
+}
+
+/* "klip is talking" — the wave itself carries the brand accent, with a
+   soft glow and a per-bar duration/amplitude cycle instead of one
+   identical keyframe on every bar, so the row reads as speech rather
+   than a metronome. */
+.wf-responding .wf-bar {
+  background: linear-gradient(180deg, var(--accent-hover), var(--accent));
+  filter: drop-shadow(0 0 5px var(--pet-glow-soft));
+  animation-name: wf-talk;
+}
+.wf-responding .wf-bar:nth-child(3n)   { animation-duration: 0.62s; }
+.wf-responding .wf-bar:nth-child(3n+1) { animation-duration: 0.78s; }
+.wf-responding .wf-bar:nth-child(3n+2) { animation-duration: 0.9s; }
+.wf-responding .wf-bar:nth-child(4n)   { animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1); }
+
+.wf-quiet .wf-bar {
+  opacity: 0.35;
+  background: linear-gradient(180deg, #5e5e66, #3a3a40);
+  height: 22% !important;
+}
+
+.wf-processing .wf-bar {
+  animation: wf-breathe 1.6s ease-in-out infinite;
+  opacity: 0.6;
+}
+
+@keyframes wf-pulse {
+  50% { transform: scaleY(0.3); opacity: 0.7; }
+}
+
+/* Wider, less uniform excursion than wf-pulse — dips near-flat then
+   overshoots past resting height, which combined with the per-bar
+   duration cycle above is what actually reads as "wavery" rather than
+   a synchronized pulse. */
+@keyframes wf-talk {
+  0%   { transform: scaleY(0.4); opacity: 0.8; }
+  35%  { transform: scaleY(1.15); opacity: 1; }
+  65%  { transform: scaleY(0.55); opacity: 0.85; }
+  100% { transform: scaleY(0.4); opacity: 0.8; }
+}
+
+@keyframes wf-breathe {
+  50% { transform: scaleY(0.55); }
+}
