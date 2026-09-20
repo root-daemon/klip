@@ -533,8 +533,8 @@ footer a:hover { color: var(--accent-light); }
   background-clip: content-box;
 }
 
-.capability { --capability-base: var(--raised); position: relative; min-height: 305px; padding: 36px; overflow: hidden; background: radial-gradient(440px circle at var(--spot-x) var(--spot-y), rgb(237 70 45 / var(--spotlight-alpha)), transparent 66%), var(--capability-base); transition: transform 260ms ease, background 260ms ease; }
-.capability:hover { --capability-base: #18181b; transform: translateY(-5px); }
+.capability { --capability-base: var(--raised); position: relative; min-height: 305px; padding: 36px; overflow: hidden; background: radial-gradient(440px circle at var(--spot-x) var(--spot-y), rgb(237 70 45 / var(--spotlight-alpha)), transparent 66%), var(--capability-base); transition: background 260ms ease, box-shadow 260ms ease; }
+.capability:hover { --capability-base: #18181b; box-shadow: inset 0 0 0 1px rgb(237 70 45 / 32%); }
 .capability h2 { max-width: 420px; margin-bottom: 15px; font-size: 28px; }
 .capability-wide { --capability-base: linear-gradient(130deg, #1c100d, #111112 57%); grid-column: span 2; min-height: 340px; }
 .capability-wide > p:not(.kicker) { max-width: 500px; }
