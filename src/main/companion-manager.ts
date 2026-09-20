@@ -11,8 +11,9 @@ import { captureAllDisplays } from './services/screen-capture';
 import { parseAllPointTags, parseTypeTags, parseDocumentTags, parseScrollTags, TAG_STRIP_REGEX, stripMarkdownEmphasis } from './services/element-detector';
 import { typeText, clickAt, scroll, isAccessibilityGranted, promptAccessibility } from './services/auto-typer';
 import { createExcel, createPdf, revealDocument } from './services/document-generator';
+import { runComputerUseTask } from './services/computer-use-agent';
 import { ContextManager } from './services/context-manager';
-import { classifyIntent } from './services/intent-router';
+import { classifyIntent, isComplexDesktopTask } from './services/intent-router';
 import * as settingsStore from './services/settings-store';
 import type { StoredSettings } from './services/settings-store';
 import * as keyStore from './services/key-store';
@@ -33,6 +34,7 @@ import type {
   PttMode,
   TypeRequest,
   DocumentCreated,
+  AgentStepEvent,
   ScreenCapture,
   ApiKeyName,
   ReasoningDepth,
@@ -65,6 +67,9 @@ export interface CompanionCallbacks {
   onTypeFulfilled: (request: TypeRequest) => void;
   /** A real .xlsx/.pdf file was written to disk from an [EXCEL:...]/[PDF:...] tag. */
   onDocumentCreated: (doc: DocumentCreated) => void;
+  /** A step in the real multi-step computer-use loop just executed (or
+   *  null when the task ends) — see computer-use-agent.ts. */
+  onAgentStep: (step: AgentStepEvent | null) => void;
   onSettingsChanged: (settings: KlipSettings) => void;
   onMemoryStatsChanged: (stats: MemoryStats) => void;
   onChatEntryAdded: (entry: ChatEntry) => void;
@@ -609,6 +614,76 @@ export class CompanionManager {
     this.walkthroughTimers.push(endTimer);
   }
 
+  /**
+   * The real multi-step path (computer-use-agent.ts): Claude drives an
+   * observe → act → observe loop against the actual OS, seeing the
+   * result of each action before deciding the next one. Only reachable
+   * when mindProvider is 'anthropic' and autoClickEnabled is on (see the
+   * call site in stopRecordingAndProcess) — this is a materially bigger
+   * grant of autonomous control than the single-shot tags, so it stays
+   * behind the same explicit opt-in rather than a separate one.
+   */
+  private async runAgenticTask(instruction: string, settings: StoredSettings): Promise<void> {
+    const myTurnId = this.turnId;
+    const abort = new AbortController();
+    this.currentAbort = abort;
+    const isCurrent = () => this.turnId === myTurnId;
+
+    try {
+      const result = await runComputerUseTask(
+        instruction,
+        settings.selectedModel,
+        (step) => {
+          if (!isCurrent()) return;
+          this.callbacks.onAgentStep(step);
+        },
+        abort.signal,
+      );
+      if (!isCurrent()) return;
+
+      this.callbacks.onAiResponseChunk(result.finalText);
+      this.callbacks.onAiResponseComplete(result.finalText);
+      analytics.trackAiResponseReceived(result.finalText);
+
+      await this.context.recordExchange(instruction, result.finalText, {});
+      if (!isCurrent()) return;
+      this.emitMemoryStats();
+
+      const entry = chatHistory.append({ userText: instruction, assistantText: result.finalText });
+      this.callbacks.onChatEntryAdded(entry);
+
+      if (settings.speakReplies) {
+        if (this.hasActiveTtsKey(settings)) {
+          try {
+            const { buffer, mimeType } = await this.synthesizeReply(stripMarkdownEmphasis(result.finalText), settings);
+            if (!isCurrent()) return;
+            this.setVoiceState('responding');
+            this.callbacks.onPlayAudio(buffer, mimeType);
+          } catch (err) {
+            console.error('TTS error on agent task:', err);
+            if (isCurrent()) this.callbacks.onError(this.describeTtsFailure(settings, err));
+          }
+        } else {
+          this.callbacks.onError(this.describeMissingTtsKey(settings));
+        }
+      }
+    } catch (err) {
+      if (!isCurrent()) return;
+      if (err instanceof Error && err.name === 'AbortError') return;
+      console.error('Agent task failed:', err);
+      this.callbacks.onError(err instanceof Error ? err.message : String(err));
+    } finally {
+      // Clear the step indicator unconditionally — even if a newer turn
+      // has superseded this one, a stale "writing"/"reading" HUD from an
+      // aborted task should never linger into the next turn.
+      this.callbacks.onAgentStep(null);
+      if (isCurrent()) {
+        this.setVoiceState('idle');
+        this.callbacks.onActiveSpecialistChanged(null);
+      }
+    }
+  }
+
   private async startRecording(): Promise<void> {
     // Bump the turn and abort any in-flight work from the previous one
     // so the user's new message supersedes whatever Klip was doing.
@@ -682,10 +757,31 @@ export class CompanionManager {
     this.callbacks.onTranscriptUpdate(result);
     analytics.trackUserMessageSent(result.text);
 
+    const settings = settingsStore.getAll();
     const specialist = classifyIntent(result.text);
     this.callbacks.onActiveSpecialistChanged(specialist);
-
     this.setVoiceState('processing');
+
+    // Genuinely multi-step desktop tasks ("check my mail and reply to
+    // the latest message") need to see the result of each action before
+    // deciding the next one — the [POINT:...]/[CLICK:...] tags below are
+    // blind (one screenshot, every action guessed up front). Hand those
+    // off to the real agentic loop instead, when it's actually available.
+    if (isComplexDesktopTask(result.text)) {
+      if (settings.mindProvider === 'anthropic' && settings.autoClickEnabled) {
+        await this.runAgenticTask(result.text, settings);
+        return;
+      }
+      // Looks like it wants the full loop but can't get it — say so, then
+      // fall through to the best-effort single-shot path below rather
+      // than doing nothing.
+      this.callbacks.onError(
+        settings.mindProvider !== 'anthropic'
+          ? 'that sounds like a multi-step task — switch Mind to Claude and turn on auto-click in General for klip to actually do it step by step. answering with a single best guess for now.'
+          : "that sounds like a multi-step task — turn on 'allow klip to click for you' in General to let it actually do it step by step. answering with a single best guess for now.",
+      );
+    }
+
     try {
       this.lastScreenshots = await captureAllDisplays();
     } catch (err) {
@@ -724,7 +820,6 @@ export class CompanionManager {
       return;
     }
 
-    const settings = settingsStore.getAll();
     const myTurnId = this.turnId;
     const abort = new AbortController();
     this.currentAbort = abort;

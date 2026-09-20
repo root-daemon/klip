@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { VoiceState, WalkthroughStep, TypeRequest, DocumentCreated, DisplayInfo, ActiveSpecialist } from '../../shared/types';
+import type { VoiceState, WalkthroughStep, TypeRequest, DocumentCreated, DisplayInfo, ActiveSpecialist, AgentStepEvent } from '../../shared/types';
 import { Waveform } from './Waveform';
 import { KlipPet, type PetMood } from './KlipPet';
 import { AdaptiveCursor } from './AdaptiveCursor';
@@ -33,6 +33,20 @@ function computeDockPos(info: DisplayInfo | null): { x: number; y: number } {
 // (eyes track it, and it waves hello once per approach).
 const NOTICE_RADIUS_PX = 260;
 const GAZE_MAX_PX = 3;
+
+/** Short label for the live agent-task HUD — see AgentStepEvent. */
+function describeAgentKind(kind: AgentStepEvent['kind']): string {
+  switch (kind) {
+    case 'observe': return 'looking at the screen';
+    case 'click': return 'clicking';
+    case 'type': return 'typing';
+    case 'scroll': return 'scrolling';
+    case 'key': return 'pressing a key';
+    case 'drag': return 'dragging';
+    case 'move': return 'moving the cursor';
+    case 'wait': return 'waiting';
+  }
+}
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
@@ -74,6 +88,11 @@ export function OverlayApp() {
   const typeToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [docToast, setDocToast] = useState<DocumentCreated | null>(null);
   const docToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** The real multi-step computer-use agent loop's current step + a
+   *  short recent-history log, driving both the pet's per-step mood
+   *  and the live task HUD below it (see computer-use-agent.ts). */
+  const [agentStep, setAgentStep] = useState<AgentStepEvent | null>(null);
+  const [agentLog, setAgentLog] = useState<AgentStepEvent[]>([]);
   // A brief happy/concerned reaction overrides the base voice-state mood
   // right when a turn lands — the pet blinks success or flinches error,
   // then settles back into whatever voiceState says next.
@@ -377,6 +396,17 @@ export function OverlayApp() {
           docToastTimerRef.current = null;
         }, 5000);
       }),
+      window.klip.onAgentStep((step) => {
+        setAgentStep(step);
+        if (step) {
+          setAgentLog((prev) => [...prev.slice(-5), step]);
+        } else {
+          // Task ended — clear the log after a short beat so the last
+          // couple of steps are still readable instead of vanishing
+          // the instant the task completes.
+          setTimeout(() => setAgentLog([]), 2500);
+        }
+      }),
       window.klip.onAiResponseComplete(() => triggerReaction('success')),
       window.klip.onAiError(() => triggerReaction('error')),
       window.klip.onWalkthroughStep((i) => {
@@ -460,7 +490,21 @@ export function OverlayApp() {
 
   const showAnnotation = (isNavigating || isHolding) && isStepOnThisDisplay;
   const isMultiStep = (currentStep?.total ?? 0) > 1;
-  const petMood: PetMood = reactionPulse ?? voiceState;
+  // While a real multi-step agent task is running, the step kind tells
+  // a richer story than the generic 'processing' voice state does —
+  // reading the screen looks different from typing, which looks
+  // different from clicking. Still overridden by a transient success/
+  // error pulse, same priority as before.
+  const agentMood: PetMood | null = agentStep
+    ? agentStep.kind === 'observe'
+      ? 'reading'
+      : agentStep.kind === 'type' || agentStep.kind === 'key'
+        ? 'writing'
+        : agentStep.kind === 'wait'
+          ? 'idle'
+          : 'responding'
+    : null;
+  const petMood: PetMood = reactionPulse ?? agentMood ?? voiceState;
 
   // Distance from wherever the pet is actually rendered right now to
   // the real cursor — drives both the eye-tracking nudge and the
@@ -520,12 +564,29 @@ export function OverlayApp() {
             </div>
           )}
 
-          {showSpecialist && !showAnnotation && (
+          {showSpecialist && !showAnnotation && agentLog.length === 0 && (
             <div
               className={`specialist-chip ${isDesktopSpecialist ? 'desktop' : 'conversation'}`}
               style={{ left: companionPos.x + 44, top: companionPos.y - 6 }}
             >
               {isDesktopSpecialist ? 'desktop' : 'conversation'}
+            </div>
+          )}
+
+          {agentLog.length > 0 && (
+            <div className="agent-hud" style={{ left: companionPos.x + 44, top: companionPos.y - 10 }}>
+              {agentLog.map((s, i) => (
+                <div
+                  key={`${s.step}-${i}`}
+                  className={`agent-hud-row ${i === agentLog.length - 1 && agentStep ? 'current' : 'done'}`}
+                >
+                  <span className={`agent-hud-dot ${s.kind}`} />
+                  <span className="agent-hud-label">
+                    {describeAgentKind(s.kind)}
+                    {s.detail ? ` — ${s.detail}` : ''}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
 

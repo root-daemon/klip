@@ -64,6 +64,46 @@
   transform: scale(1.18);
 }
 
+/* ── Agent task HUD ─────────────────────────────────────────────────── */
+/* Live trace of the real multi-step computer-use loop (see
+   computer-use-agent.ts) — replaces the specialist chip while a task is
+   actually running, since it tells a richer story than a static label. */
+
+.agent-hud {
+  position: absolute;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  pointer-events: none;
+  background: rgba(10, 10, 10, 0.88);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--pet-glow-soft);
+  animation: bubble-in 0.18s ease-out;
+  max-width: 240px;
+}
+.agent-hud-row {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-label);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fl-dim, rgba(240, 237, 230, 0.45));
+  transition: color 0.2s ease, opacity 0.2s ease;
+}
+.agent-hud-row.current {
+  color: var(--pet-glow);
+  font-weight: 600;
+}
+.agent-hud-dot {
+  width: 5px; height: 5px; border-radius: 999px; flex-shrink: 0;
+  background: currentColor;
+}
+.agent-hud-row.current .agent-hud-dot {
+  animation: dotPulse 1s infinite;
+}
+
 /* ── Waveform Visualizer (positions the shared <Waveform>) ─────────── */
 
 .overlay-waveform {
@@ -117,6 +157,10 @@
 @keyframes bubble-in {
   from { opacity: 0; transform: translateY(-2px) scale(0.96); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes dotPulse {
+  50% { opacity: 0.35; transform: scale(0.8); }
 }
 
 /* ── Target Halo ───────────────────────────────────────────────────── */

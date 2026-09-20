@@ -26,3 +26,36 @@ export function classifyIntent(transcript: string): ActiveSpecialist {
   }
   return 'conversation';
 }
+
+/**
+ * A second, stricter heuristic on top of classifyIntent: does this
+ * request need to actually SEE the result of one action before deciding
+ * the next ("check my mail and reply to the newest one"), rather than a
+ * single guessable action from one screenshot ("click the save button")?
+ * The former needs the real multi-step computer-use agent loop
+ * (computer-use-agent.ts); the latter is well served by the existing
+ * one-shot [POINT:...]/[CLICK:...] tags and shouldn't pay for a slower,
+ * more expensive multi-round-trip loop it doesn't need.
+ *
+ * Heuristic, not a model call, for the same reason classifyIntent is:
+ * a false negative just falls back to the cheaper single-shot path
+ * (still useful), and a false positive costs one extra confirmation
+ * round trip at worst — neither failure mode is silent or damaging.
+ */
+const SEQUENCE_WORDS = /\b(then|after that|once (you|that)|next,|and then)\b/i;
+const APP_OR_SITE_MENTION =
+  /\b(gmail|outlook|inbox|mail|email|chrome|firefox|edge|browser|website|webpage|google|youtube|amazon|maps|calendar|slack|notion|spotify)\b/i;
+const MULTI_STEP_VERBS =
+  /\b(search|navigate|go to|log ?in|sign ?in|browse|book|order|buy|watch|play|download|compose|reply|forward|fill out|fill in the form|check my|look up|find (a|some|the)\b.*\bon\b)\b/gi;
+
+export function isComplexDesktopTask(transcript: string): boolean {
+  const text = transcript.trim();
+  if (!text) return false;
+  const verbMatches = text.match(MULTI_STEP_VERBS) ?? [];
+  const hasSequencing = SEQUENCE_WORDS.test(text);
+  const mentionsAppOrSite = APP_OR_SITE_MENTION.test(text);
+  // Needs at least one multi-step-flavored verb, plus a second signal
+  // (sequencing language, a named app/site, or a second verb) so a
+  // simple "search for the settings icon" doesn't trigger the full loop.
+  return verbMatches.length >= 2 || (verbMatches.length >= 1 && (hasSequencing || mentionsAppOrSite));
+}

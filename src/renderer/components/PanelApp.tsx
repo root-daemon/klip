@@ -8,11 +8,12 @@ import { EarTab } from './panel/EarTab';
 import { GeneralTab } from './panel/GeneralTab';
 import { SettingsTab } from './panel/SettingsTab';
 import { AgentsTab } from './panel/AgentsTab';
+import { IntegrationsTab } from './panel/IntegrationsTab';
 import { PermissionsBanner } from './panel/PermissionsBanner';
 import { Onboarding } from './panel/Onboarding';
 import { KlipPet } from './KlipPet';
 
-type Tab = 'home' | 'chats' | 'mind' | 'voice' | 'ear' | 'general' | 'settings' | 'agents';
+type Tab = 'home' | 'chats' | 'mind' | 'voice' | 'ear' | 'general' | 'settings' | 'agents' | 'integrations';
 
 export function PanelApp() {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
@@ -102,6 +103,9 @@ export function PanelApp() {
           <div className="nav-label">Crew</div>
           {navItem('agents', 'Agents', '✦')}
 
+          <div className="nav-label">Capabilities</div>
+          {navItem('integrations', 'MCP Integrations', '⬡')}
+
           <div className="nav-label">System</div>
           {navItem('settings', 'Settings', '⚙')}
           {navItem('general', 'General', '▤')}
@@ -147,6 +151,7 @@ export function PanelApp() {
         {tab === 'voice' && <VoiceTab settings={settings} />}
         {tab === 'ear' && <EarTab settings={settings} />}
         {tab === 'agents' && <AgentsTab />}
+        {tab === 'integrations' && <IntegrationsTab />}
         {tab === 'settings' && <SettingsTab settings={settings} />}
         {tab === 'general' && <GeneralTab settings={settings} memory={memory} />}
       </main>

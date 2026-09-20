@@ -266,6 +266,10 @@ app.whenReady().then(() => {
       sendToPanel(IPC.DOCUMENT_CREATED, doc);
       sendToStream(IPC.DOCUMENT_CREATED, doc);
     },
+    onAgentStep: (step) => {
+      sendToOneOverlay(IPC.AGENT_STEP, step);
+      sendToPanel(IPC.AGENT_STEP, step);
+    },
     onSettingsChanged: (s) => sendToPanel(IPC.SETTINGS_CHANGED, s),
     onMemoryStatsChanged: (stats) => sendToPanel(IPC.MEMORY_STATS, stats),
     onChatEntryAdded: (entry) => sendToPanel(IPC.CHAT_ENTRY_ADDED, entry),

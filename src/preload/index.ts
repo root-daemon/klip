@@ -17,6 +17,7 @@ import type {
   Walkthrough,
   TypeRequest,
   DocumentCreated,
+  AgentStepEvent,
   ReasoningDepth,
   ReplyTone,
   PttMode,
@@ -253,6 +254,12 @@ const api = {
     const handler = (_e: Electron.IpcRendererEvent, doc: DocumentCreated) => cb(doc);
     ipcRenderer.on(IPC.DOCUMENT_CREATED, handler);
     return () => ipcRenderer.removeListener(IPC.DOCUMENT_CREATED, handler);
+  },
+
+  onAgentStep: (cb: (step: AgentStepEvent | null) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, step: AgentStepEvent | null) => cb(step);
+    ipcRenderer.on(IPC.AGENT_STEP, handler);
+    return () => ipcRenderer.removeListener(IPC.AGENT_STEP, handler);
   },
 
   onCursorPosition: (cb: (pos: { x: number; y: number }) => void) => {

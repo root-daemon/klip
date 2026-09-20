@@ -136,6 +136,20 @@ export interface DocumentCreated {
   path: string;
 }
 
+/**
+ * One executed step from the real multi-step computer-use agent loop
+ * (see computer-use-agent.ts) — used to drive the overlay's live task
+ * HUD and the pet's per-step animation (reading/writing/clicking/...).
+ */
+export type AgentActionKind = 'observe' | 'click' | 'type' | 'scroll' | 'key' | 'wait' | 'drag' | 'move';
+
+export interface AgentStepEvent {
+  step: number;
+  action: string;
+  kind: AgentActionKind;
+  detail?: string;
+}
+
 // ── Local Connections (Ollama / OpenAI-compatible local endpoints) ─────
 
 export interface OllamaModelInfo {
@@ -381,6 +395,7 @@ export const IPC = {
   WALKTHROUGH_STEP: 'walkthrough-step',
   TYPE_FULFILLED: 'type-fulfilled',
   DOCUMENT_CREATED: 'document-created',
+  AGENT_STEP: 'agent-step',
   CURSOR_POSITION: 'cursor-position',
   SETTINGS_CHANGED: 'settings-changed',
   PERMISSION_STATUS: 'permission-status',

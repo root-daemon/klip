@@ -820,6 +820,20 @@ button.provider-pick:hover {
 }
 .tour-card-link:hover { color: var(--accent-hover); }
 
+.integration-status {
+  display: inline-flex; align-items: center; gap: 5px;
+  margin-top: 12px;
+  font-family: var(--font-label);
+  font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase;
+}
+.integration-status::before {
+  content: ''; width: 6px; height: 6px; border-radius: 999px;
+}
+.integration-status.live { color: var(--fl-ok); }
+.integration-status.live::before { background: var(--fl-ok); box-shadow: 0 0 6px var(--fl-ok); }
+.integration-status.needs-setup { color: var(--fl-warn); }
+.integration-status.needs-setup::before { background: var(--fl-warn); }
+
 /* ── Shortcut capture mode ─────────────────────────────────────── */
 .shortcut-edit.capture {
   background: #000;

@@ -3,8 +3,11 @@ import { AnimatePresence, motion, useAnimation } from 'framer-motion';
 import type { VoiceState } from '../../shared/types';
 
 /** VoiceState plus two transient reaction states the overlay/panel can
- *  pulse into briefly after a turn completes or fails. */
-export type PetMood = VoiceState | 'success' | 'error';
+ *  pulse into briefly after a turn completes or fails, plus two
+ *  activity states used by the computer-use agent loop's live step
+ *  HUD (see AgentTaskHud) to show what the current step is actually
+ *  doing rather than a generic "processing" spinner throughout. */
+export type PetMood = VoiceState | 'success' | 'error' | 'writing' | 'reading';
 
 interface KlipPetProps {
   mood: PetMood;
@@ -93,6 +96,13 @@ export function KlipPet({
   const showCapsuleEyes = !isHappy && !isWorried;
 
   useEffect(() => {
+    // The hand only stays visible for 'writing' (see that case below);
+    // every other mood keeps it hidden here so leaving 'writing' always
+    // puts it away, the same way performWave() does when its own
+    // animation finishes.
+    if (mood !== 'writing') {
+      hand.start({ opacity: 0, scale: 0, rotate: 0, transition: { duration: 0.2 } });
+    }
     switch (mood) {
       case 'idle':
         body.start({ scale: [1, 1.015, 1], x: 0, y: 0, rotate: 0, transition: { duration: 3.2, repeat: Infinity, ease: 'easeInOut' } });
@@ -131,8 +141,33 @@ export function KlipPet({
         body.start({ x: [0, -3, 3, -2, 2, 0], y: 0, scale: 1, rotate: 0, transition: { duration: 0.4 } });
         glow.start({ opacity: 0.85, scale: 1.15, transition: { duration: 0.3 } });
         break;
+      case 'writing':
+        // Eyes dip slightly, as if looking down at the page, while the
+        // hand comes out and stays out — a small rotate+bob loop reads
+        // as short pen strokes rather than the one-shot wave gesture.
+        body.start({ scale: 1, x: 0, y: [0, -1, 0], rotate: 0, transition: { duration: 1.1, repeat: Infinity, ease: 'easeInOut' } });
+        leftEye.start({ scaleY: 0.78, scaleX: 1, y: 1.5, x: 0, transition: SPRING });
+        rightEye.start({ scaleY: 0.78, scaleX: 1, y: 1.5, x: 0, transition: SPRING });
+        glow.start({ opacity: [0.45, 0.65, 0.45], scale: [1.05, 1.15, 1.05], transition: { duration: 1.1, repeat: Infinity, ease: 'easeInOut' } });
+        hand.start({
+          opacity: 1,
+          scale: 1,
+          rotate: [-10, 8, -10],
+          y: [0, 2, 0],
+          transition: { duration: 0.45, repeat: Infinity, ease: 'easeInOut' },
+        });
+        break;
+      case 'reading':
+        // A fast left-right saccade sweep — deliberately quicker and
+        // tighter than the idle "glance" quirk, to read as scanning
+        // text rather than a casual look-around.
+        body.start({ scale: 1, x: 0, y: 0, rotate: 0, transition: { duration: 0.3 } });
+        leftEye.start({ scaleY: 0.92, scaleX: 1, x: [-3, 3, -3], y: 0, transition: { duration: 0.85, repeat: Infinity, ease: 'easeInOut' } });
+        rightEye.start({ scaleY: 0.92, scaleX: 1, x: [-3, 3, -3], y: 0, transition: { duration: 0.85, repeat: Infinity, ease: 'easeInOut' } });
+        glow.start({ opacity: [0.4, 0.6, 0.4], scale: 1.1, transition: { duration: 0.85, repeat: Infinity, ease: 'easeInOut' } });
+        break;
     }
-  }, [mood, body, glow, leftEye, rightEye]);
+  }, [mood, body, glow, leftEye, rightEye, hand]);
 
   // Blink is a separate transform layer (a wrapping <motion.g> one level
   // above the eye shape) driven by its own controls, so it composes with

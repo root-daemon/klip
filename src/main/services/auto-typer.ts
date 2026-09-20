@@ -110,3 +110,137 @@ export async function scroll(direction: 'up' | 'down', amount: number): Promise<
     return false;
   }
 }
+
+// ── Extended primitives for the computer-use agent loop ──────────────
+// (element-detector.ts / computer-use-agent.ts) — the click/scroll
+// helpers above stay as-is since the walkthrough system already
+// depends on their exact signatures; these are additive.
+
+type NutKeyEnum = Awaited<ReturnType<typeof load>> extends infer L
+  ? L extends { Key: infer K }
+    ? K
+    : never
+  : never;
+type NutKeyValue = NutKeyEnum[keyof NutKeyEnum];
+
+export async function moveMouseTo(x: number, y: number): Promise<boolean> {
+  const lib = await load();
+  if (!lib) return false;
+  if (!isAccessibilityGranted()) return false;
+  try {
+    await lib.mouse.setPosition(new lib.Point(Math.round(x), Math.round(y)));
+    return true;
+  } catch (err) {
+    console.error('[Klip] mouse move failed:', err);
+    return false;
+  }
+}
+
+export async function mouseClick(button: 'left' | 'right', count: 1 | 2 | 3 = 1): Promise<boolean> {
+  const lib = await load();
+  if (!lib) return false;
+  if (!isAccessibilityGranted()) return false;
+  try {
+    for (let i = 0; i < count; i++) {
+      if (button === 'left') await lib.mouse.leftClick();
+      else await lib.mouse.rightClick();
+    }
+    return true;
+  } catch (err) {
+    console.error('[Klip] mouse click failed:', err);
+    return false;
+  }
+}
+
+export async function mouseDrag(x1: number, y1: number, x2: number, y2: number): Promise<boolean> {
+  const lib = await load();
+  if (!lib) return false;
+  if (!isAccessibilityGranted()) return false;
+  try {
+    await lib.mouse.drag([new lib.Point(Math.round(x1), Math.round(y1)), new lib.Point(Math.round(x2), Math.round(y2))]);
+    return true;
+  } catch (err) {
+    console.error('[Klip] mouse drag failed:', err);
+    return false;
+  }
+}
+
+export async function getCursorPos(): Promise<{ x: number; y: number } | null> {
+  const lib = await load();
+  if (!lib) return null;
+  try {
+    const p = await lib.mouse.getPosition();
+    return { x: p.x, y: p.y };
+  } catch (err) {
+    console.error('[Klip] cursor position read failed:', err);
+    return null;
+  }
+}
+
+/** xdotool-style key names (the convention Anthropic's computer-use tool
+ *  reports, e.g. "Return", "ctrl+s", "alt+Tab") mapped to nut-js's Key
+ *  enum. Unrecognized tokens are dropped with a warning rather than
+ *  throwing — a best-effort press beats failing the whole action. */
+function resolveKeyToken(token: string, Key: NutKeyEnum): NutKeyValue | null {
+  const t = token.trim().toLowerCase();
+  const table: Record<string, keyof NutKeyEnum> = {
+    ctrl: 'LeftControl', control: 'LeftControl',
+    alt: 'LeftAlt', option: 'LeftAlt',
+    shift: 'LeftShift',
+    super: 'LeftSuper', cmd: 'LeftCmd', command: 'LeftCmd', win: 'LeftWin', meta: 'LeftMeta',
+    return: 'Return', enter: 'Return',
+    escape: 'Escape', esc: 'Escape',
+    tab: 'Tab',
+    space: 'Space',
+    backspace: 'Backspace',
+    delete: 'Delete', del: 'Delete',
+    insert: 'Insert',
+    home: 'Home', end: 'End',
+    page_up: 'PageUp', pageup: 'PageUp', prior: 'PageUp',
+    page_down: 'PageDown', pagedown: 'PageDown', next: 'PageDown',
+    up: 'Up', down: 'Down', left: 'Left', right: 'Right',
+    capslock: 'CapsLock',
+  };
+  if (table[t]) return Key[table[t]];
+  if (/^f([1-9]|1\d|2[0-4])$/.test(t)) return Key[`F${t.slice(1)}` as keyof NutKeyEnum];
+  if (/^[a-z]$/.test(t)) return Key[t.toUpperCase() as keyof NutKeyEnum];
+  if (/^[0-9]$/.test(t)) return Key[`Num${t}` as keyof NutKeyEnum];
+  console.warn(`[Klip] unrecognized key token "${token}" — skipped`);
+  return null;
+}
+
+/** Presses a combo like "ctrl+s" or a single key like "Return", holding
+ *  modifiers for the duration of the main key press (natural ordering,
+ *  matching nut-js's own pressKey/releaseKey contract). */
+export async function pressKeyCombo(text: string): Promise<boolean> {
+  const lib = await load();
+  if (!lib) return false;
+  if (!isAccessibilityGranted()) return false;
+  const keys = text.split('+').map((t) => resolveKeyToken(t, lib.Key)).filter((k): k is NutKeyValue => k !== null);
+  if (keys.length === 0) return false;
+  try {
+    await lib.keyboard.pressKey(...keys);
+    await lib.keyboard.releaseKey(...keys);
+    return true;
+  } catch (err) {
+    console.error('[Klip] key combo failed:', err);
+    return false;
+  }
+}
+
+export async function holdKeyFor(text: string, seconds: number): Promise<boolean> {
+  const lib = await load();
+  if (!lib) return false;
+  if (!isAccessibilityGranted()) return false;
+  const keys = text.split('+').map((t) => resolveKeyToken(t, lib.Key)).filter((k): k is NutKeyValue => k !== null);
+  if (keys.length === 0) return false;
+  try {
+    await lib.keyboard.pressKey(...keys);
+    await new Promise((r) => setTimeout(r, Math.min(seconds, 300) * 1000));
+    await lib.keyboard.releaseKey(...keys);
+    return true;
+  } catch (err) {
+    console.error('[Klip] hold key failed:', err);
+    return false;
+  }
+}
