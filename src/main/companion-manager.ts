@@ -1,4 +1,5 @@
 import { app, systemPreferences, shell, desktopCapturer, clipboard } from 'electron';
+import { parsePreferences, type CloudPreferences } from '../shared/cloud';
 import { ClaudeAPI } from './services/claude-api';
 import { OpenAIAPI } from './services/openai-api';
 import { GeminiAPI } from './services/gemini-api';
@@ -134,6 +135,13 @@ export class CompanionManager {
       apiKeyStatus: keyStore.getKeyStatus(),
       encryptionAvailable: keyStore.isEncryptionAvailable(),
     };
+  }
+
+  applyCloudPreferences(value: CloudPreferences): void {
+    const preferences = parsePreferences(value);
+    settingsStore.setPreferences(preferences);
+    this.callbacks.onCursorVisibilityChanged(preferences.isClickyCursorEnabled);
+    this.emitSettings();
   }
 
   setModel(model: ClaudeModel): void {

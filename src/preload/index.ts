@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import { CLOUD_IPC, type CloudAuthInput, type CloudAction, type CloudResult } from '../shared/cloud';
 import { IPC, DISPLAY_INFO_ARG_PREFIX } from '../shared/types';
 import type {
   ApiKeyName,
@@ -49,6 +50,7 @@ const initialDisplayInfo: DisplayInfo | null = (() => {
 })();
 
 const api = {
+  cloudAccount: (action: CloudAction, input?: CloudAuthInput): Promise<CloudResult> => ipcRenderer.invoke(CLOUD_IPC, action, input),
   // The host platform, resolved at runtime in the main process so it's
   // correct even when the renderer was cross-compiled (a CI build of a
   // macOS dmg on Linux would otherwise leak the build host's platform

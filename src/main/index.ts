@@ -16,6 +16,7 @@ import { validateApiKey, validateStoredApiKey } from './services/key-validation'
 import { OllamaAPI } from './services/ollama-api';
 import { initGpuGuard, confirmGpuHealthy } from './services/gpu-guard';
 import { randomUUID } from 'crypto';
+import { registerCloudAccount } from './services/cloud-account';
 
 // Prevent multiple instances
 const gotLock = app.requestSingleInstanceLock();
@@ -451,6 +452,7 @@ app.whenReady().then(() => {
   // ── IPC Handlers ───────────────────────────────────────────────────
 
   ipcMain.handle(IPC.GET_SETTINGS, () => companion.getSettings());
+  registerCloudAccount(companion, () => panelWindow);
   ipcMain.handle(IPC.GET_PERMISSIONS, () => companion.getPermissions());
   ipcMain.handle(IPC.GET_APP_VERSION, () => app.getVersion());
   ipcMain.handle(IPC.VALIDATE_API_KEY, (_e, name, key: string) => validateApiKey(name, key));
